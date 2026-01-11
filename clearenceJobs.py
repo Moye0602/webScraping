@@ -206,7 +206,7 @@ def finalize_to_json(data_list, filename="jobs_data.json"):
     return json.dumps(cleaned_data, indent=4) # Returns as a JSON string
 # Example Usage with your provided snippet:
 baseURL = "https://www.clearancejobs.com/jobs?loc=5&received=31&ind=nq,nr,pg,nu,nv"
-total_pages = 1#get_total_pages()
+total_pages = get_total_pages()
 all_jobs = []
 for i in range(1,total_pages+1):  # Simulate multiple pages if needed
     currentURL = f"{baseURL}&PAGE={i}"

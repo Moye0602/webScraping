@@ -1,8 +1,11 @@
 import google.generativeai as genai
-import json
-import time
-import re
-import random
+import re,time,random
+import json,os
+import google.generativeai as genai
+from playwright.sync_api import sync_playwright
+from tqdm import tqdm
+from docx import Document
+
 
 def jitter():
     jitterTime = random.uniform(3, 5)  # Random time between 3 to 5 seconds
@@ -10,7 +13,8 @@ def jitter():
     time.sleep(jitterTime)  # Random delay to mimic human behavior
 
 # Setup API Key
-genai.configure(api_key="AIzaSyDcLrjlrfChc-HwPgRpAzpxFz9F4PIP5nc")
+api_key = os.getenv("GENAI_API_KEY")
+genai.configure(api_key=api_key)
 # models = genai.list_models()
 # print('Available Models:')
 # models_list = []
@@ -119,17 +123,12 @@ def generate_review_dashboard(jobs_json):
 
 
 
-import json
-import os
-import google.generativeai as genai
-from playwright.sync_api import sync_playwright
-from tqdm import tqdm
 
 # Load your resume text from a file
 # with open("my_resume.txt", "r", encoding="utf-8") as f:
 #     resume_text = f.read()
 
-from docx import Document
+
 
 def extract_text_from_docx(file_path):
     try:

@@ -8,6 +8,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+
 build/
 develop-eggs/
 dist/
@@ -75,6 +76,10 @@ db.sqlite3-journal
 .env
 .env.*
 .envrc
+
+# general files
+.docx
+*.pdf
 
 # Editor/IDE
 .vscode/
