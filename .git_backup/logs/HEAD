@@ -1,0 +1,17 @@
+0000000000000000000000000000000000000000 8a41f80f13f33c6f6d7f7ac232a419088dd9ddb5 Kris M <007751114@coyote.csusb.edu> 1723600636 -0700	commit (initial): first commit
+8a41f80f13f33c6f6d7f7ac232a419088dd9ddb5 0000000000000000000000000000000000000000 Kris M <007751114@coyote.csusb.edu> 1723600636 -0700	Branch: renamed refs/heads/main to refs/heads/main
+8a41f80f13f33c6f6d7f7ac232a419088dd9ddb5 8a41f80f13f33c6f6d7f7ac232a419088dd9ddb5 Kris M <007751114@coyote.csusb.edu> 1723600636 -0700	Branch: renamed refs/heads/main to refs/heads/main
+8a41f80f13f33c6f6d7f7ac232a419088dd9ddb5 8a41f80f13f33c6f6d7f7ac232a419088dd9ddb5 Kris M <007751114@coyote.csusb.edu> 1724642130 -0700	checkout: moving from main to 8a41f80f13f33c6f6d7f7ac232a419088dd9ddb5
+8a41f80f13f33c6f6d7f7ac232a419088dd9ddb5 108617214117e24c1035a7d22544fecc359319e2 Kris M <007751114@coyote.csusb.edu> 1726858765 -0700	commit (merge): Resolve merge conflict in README.md
+108617214117e24c1035a7d22544fecc359319e2 108617214117e24c1035a7d22544fecc359319e2 kris moye <kmoye@Big_Bad_Blue.(none)> 1757559719 -0400	checkout: moving from 108617214117e24c1035a7d22544fecc359319e2 to Mixer
+108617214117e24c1035a7d22544fecc359319e2 9382673625ab00ff265e5290a3cbeb259d72485b Kris <moye.k.j@gmail.com> 1764993671 -0500	commit: first commit
+9382673625ab00ff265e5290a3cbeb259d72485b 0000000000000000000000000000000000000000 Kris <moye.k.j@gmail.com> 1764993671 -0500	Branch: renamed refs/heads/Mixer to refs/heads/main
+0000000000000000000000000000000000000000 9382673625ab00ff265e5290a3cbeb259d72485b Kris <moye.k.j@gmail.com> 1764993671 -0500	Branch: renamed refs/heads/Mixer to refs/heads/main
+9382673625ab00ff265e5290a3cbeb259d72485b 9382673625ab00ff265e5290a3cbeb259d72485b Kris <moye.k.j@gmail.com> 1764993920 -0500	checkout: moving from main to underFlow
+9382673625ab00ff265e5290a3cbeb259d72485b 4ce3e9d92d538002aedae253123669cef65e3322 kris moye <kmoye@Big_Bad_Blue.(none)> 1764994090 -0500	checkout: moving from underFlow to 4ce3e9d92d538002aedae253123669cef65e3322
+4ce3e9d92d538002aedae253123669cef65e3322 9382673625ab00ff265e5290a3cbeb259d72485b kris moye <kmoye@Big_Bad_Blue.(none)> 1764994189 -0500	checkout: moving from 4ce3e9d92d538002aedae253123669cef65e3322 to main
+9382673625ab00ff265e5290a3cbeb259d72485b 9382673625ab00ff265e5290a3cbeb259d72485b kris moye <kmoye@Big_Bad_Blue.(none)> 1764994570 -0500	checkout: moving from main to underFlow
+9382673625ab00ff265e5290a3cbeb259d72485b 9382673625ab00ff265e5290a3cbeb259d72485b kris moye <kmoye@Big_Bad_Blue.(none)> 1764994621 -0500	checkout: moving from underFlow to underFlow
+9382673625ab00ff265e5290a3cbeb259d72485b 9382673625ab00ff265e5290a3cbeb259d72485b Kris <moye.k.j@gmail.com> 1765671182 -0500	checkout: moving from underFlow to main
+9382673625ab00ff265e5290a3cbeb259d72485b 9382673625ab00ff265e5290a3cbeb259d72485b Kris <moye.k.j@gmail.com> 1765762754 -0500	checkout: moving from main to main
+9382673625ab00ff265e5290a3cbeb259d72485b 398e148c77607db89da778458d8b11068713ff5d Kris <moye.k.j@gmail.com> 1768147496 -0500	commit: Apply .gitignore: stop tracking dependencies and build artifacts

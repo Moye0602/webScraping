@@ -1,0 +1,4 @@
+0000000000000000000000000000000000000000 108617214117e24c1035a7d22544fecc359319e2 kris moye <kmoye@Big_Bad_Blue.(none)> 1757559719 -0400	branch: Created from HEAD
+108617214117e24c1035a7d22544fecc359319e2 9382673625ab00ff265e5290a3cbeb259d72485b Kris <moye.k.j@gmail.com> 1764993671 -0500	commit: first commit
+9382673625ab00ff265e5290a3cbeb259d72485b 9382673625ab00ff265e5290a3cbeb259d72485b Kris <moye.k.j@gmail.com> 1764993671 -0500	Branch: renamed refs/heads/Mixer to refs/heads/main
+9382673625ab00ff265e5290a3cbeb259d72485b 398e148c77607db89da778458d8b11068713ff5d Kris <moye.k.j@gmail.com> 1768147496 -0500	commit: Apply .gitignore: stop tracking dependencies and build artifacts
