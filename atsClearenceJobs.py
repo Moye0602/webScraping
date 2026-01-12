@@ -9,7 +9,7 @@ from docx import Document
 
 def jitter():
     jitterTime = random.uniform(3, 5)  # Random time between 3 to 5 seconds
-    print(f"Jittering for {jitterTime:.2f} seconds...")
+    print(f"Jittering for {jitterTime:.2f} seconds...",end='\r')
     time.sleep(jitterTime)  # Random delay to mimic human behavior
 
 # Setup API Key
@@ -201,6 +201,9 @@ def create_nested_master_json(data_list, filename="llm_data_ClearenceJobs.json")
         # If company isn't in dict, initialize it
         if company not in master_dict:
             master_dict[company] = {}
+        if item['salary_min'] <94000:
+             print(f"  [!] Skipping {role} at {company} due to low salary: ${item['salary_min']}")
+             continue
 
         # Nest the role details under the role_name key within that company
         master_dict[company][role] = {

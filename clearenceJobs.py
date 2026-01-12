@@ -91,8 +91,9 @@ def extract_salary(text):
 
 def process_scraped_data(job_cards):
     extracted_data = []
-
+    
     for card in job_cards:
+        number =job_cards.index(card)+1
         try:
             # 1. Role and Link (Drilling into the 'Header' and 'Job Name Wrapper')
             role_node = card.select_one('.job-search-list-item-desktop__job-name')
@@ -101,7 +102,8 @@ def process_scraped_data(job_cards):
             role_link = "https://www.clearancejobs.com" + role_node['href']
 
             #1.5 Deep scraping for full description
-            print(f"Deep scraping: {role_name[:30]}...")
+            role_nameTruncate = role_name[:30]
+            print(f"{number} |Deep scraping: {role_name}...")
             full_description = get_full_job_details( role_link)
             salary_data = extract_salary(full_description)
             # print(full_description)
@@ -180,7 +182,6 @@ def finalize_to_json(data_list, filename="jobs_data.json"):
         
         # CLEANUP: Extracting the real date if it was stuck in the clearance field
         date_val = "Posted today" if "today" in raw_clearance else entry.get('date_posted')
-        print(entry.keys())
         clean_entry = {
             "role_name": entry['role_name'],
             "company": entry['company'],
@@ -206,7 +207,7 @@ def finalize_to_json(data_list, filename="jobs_data.json"):
     return json.dumps(cleaned_data, indent=4) # Returns as a JSON string
 # Example Usage with your provided snippet:
 baseURL = "https://www.clearancejobs.com/jobs?loc=5&received=31&ind=nq,nr,pg,nu,nv"
-total_pages = get_total_pages()
+total_pages = 3#get_total_pages()
 all_jobs = []
 for i in range(1,total_pages+1):  # Simulate multiple pages if needed
     currentURL = f"{baseURL}&PAGE={i}"
