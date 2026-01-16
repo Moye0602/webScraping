@@ -1,16 +1,19 @@
 import json
+from pprint import pprint
 from bs4 import BeautifulSoup
 from icecream import ic
 import requests
 import time,random
+import concurrent.futures
+from datetime import datetime
 
 def jitter():
-    jitterTime = random.uniform(3, 5)  # Random time between 3 to 5 seconds
+    jitterTime = random.uniform(0, 1)  # Random time between 0 to 2 seconds
     print(f"Jittering for {jitterTime:.2f} seconds...",end='\r')
     time.sleep(jitterTime)  # Random delay to mimic human behavior
 
 def get_total_pages():
-    url = "https://www.clearancejobs.com/jobs?loc=5&received=31&ind=nq,nr,pg,nu,nv"
+    url = "https://www.clearancejobs.com/jobs?loc=5%2C9&received=31&ind=nq%2Cnr%2Cpg%2Cnu%2Cnv"
     headers = {"User-Agent": "Mozilla/5.0"} # Mimics a real browser
     # 1. Get the document behind the URL
 
@@ -34,20 +37,23 @@ def get_total_pages():
         print(f"Detected {1} pages to scrape.")
         return 1
 
-def parse_clearance_job_html(html_content):
-    url = "https://www.clearancejobs.com/jobs?loc=5&received=31&ind=nq,nr,pg,nu,nv"
+def parse_clearance_job_html(url: str):
+    """Fetch the job list page for the given URL and return job card elements."""
     headers = {"User-Agent": "Mozilla/5.0"} # Mimics a real browser
-    # 1. Get the document behind the URL
 
-    response = requests.get(url, headers=headers)
-    html_content = response.text 
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        html_content = response.text
+    except Exception as e:
+        print(f"Warning: failed to fetch {url}: {e}")
+        return []
 
     # 2. Feed that document to Beautiful Soup
     soup = BeautifulSoup(html_content, 'html.parser')
-    
 
     # Target the main container identified in your screenshot
-    return  soup.select('div.job-search-list-item-desktop')
+    return soup.select('div.job-search-list-item-desktop')
 
 def get_full_job_details(url):
     """Fetches the full description from a standalone link."""
@@ -82,54 +88,91 @@ def scrape_full_description(page, url):
 import re
 
 def extract_salary(text):
-    """Regex to find salary patterns like $118,600.00 - $178,000.00"""
-    pattern = r"\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*-\s*\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)"
-    match = re.search(pattern, text)
-    if match:
-        return {"min": match.group(1), "max": match.group(2)}
-    return {"min": None, "max": None}
+    """Parse salary from text and return integer min/max in dollars.
 
-def process_scraped_data(job_cards):
+    Returns dict with integer values or 0 when not found.
+    Examples handled:
+      - "$118,600.00 - $178,000.00" => {"min": 118600, "max": 178000}
+      - "$118,600" => {"min": 118600, "max": 118600}
+      - no match => {"min": 0, "max": 0}
+    """
+    def to_int(num_str: str) -> int:
+        try:
+            # remove commas and cast through float to handle decimals
+            return int(float(num_str.replace(',', '')))
+        except Exception:
+            return 0
+
+    # Range pattern
+    range_pattern = r"\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*-\s*\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)"
+    m = re.search(range_pattern, text) 
+
+    if m:
+        return {"min": to_int(m.group(1)), "max": to_int(m.group(2))}
+
+    # Single value pattern
+    single_pattern = r"\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)"
+    m = re.search(single_pattern, text)
+    if m:
+        val = to_int(m.group(1))
+        return {"min": val, "max": val}
+
+    return {"min": 0, "max": 0}
+
+def process_scraped_data(job_cards, seen_links: set = None):
+    """Process a list of job cards and return deduplicated extracted data.
+
+    seen_links: optional set of URLs used to dedupe across pages. If not provided a new set
+    will be used locally.
+    """
     extracted_data = []
-    
-    for card in job_cards:
-        number =job_cards.index(card)+1
+    if seen_links is None:
+        seen_links = set()
+
+    for idx, card in enumerate(job_cards, start=1):
         try:
             # 1. Role and Link (Drilling into the 'Header' and 'Job Name Wrapper')
             role_node = card.select_one('.job-search-list-item-desktop__job-name')
+            if not role_node:
+                # skip malformed card
+                print(f"Skipping malformed card at index {idx}")
+                continue
             role_name = role_node.get_text(strip=True)
             # Prepend base URL for the link
-            role_link = "https://www.clearancejobs.com" + role_node['href']
+            role_href = role_node.get('href')
+            if not role_href:
+                print(f"Skipping card with missing href for role '{role_name}'")
+                continue
+            role_link = "https://www.clearancejobs.com" + role_href
+
+            # Deduplicate on link
+            if role_link in seen_links:
+                print(f"Skipping duplicate job link: {role_link}")
+                continue
 
             #1.5 Deep scraping for full description
             role_nameTruncate = role_name[:30]
-            print(f"{number} |Deep scraping: {role_name}...")
-            full_description = get_full_job_details( role_link)
+            print(f"{idx} |Deep scraping: {role_name}...")
+            full_description = get_full_job_details(role_link)
             salary_data = extract_salary(full_description)
-            # print(full_description)
             jitter()
+
             # 2. Company
             company_node = card.select_one('.job-search-list-item-desktop__company-name a')
-            company = company_node.get_text(strip=True)
+            company = company_node.get_text(strip=True) if company_node else "Unknown"
 
             # 3. Location (Handling the San Diego, CA On-Site structure)
             location_node = card.select_one('.cj-multiple-locations__location-name')
             location_text = location_node.get_text(strip=True) if location_node else "N/A"
-            
-            # setting_node = card.select_one('.cj-multiple-locations__type')
-            # setting_text = setting_node.get_text(strip=True) if setting_node else ""
 
             # 4. Meta Data (Clearance, Date, Poly)
-            # Since these use icon anchors, we'll find the specific group
             clearance = "Not Specified"
             poly = "Not Specified"
             posted = "Unknown"
 
-            # In your HTML, these are often inside 'job-search-list-item-desktop__group'
             groups = card.find_all('div', class_='job-search-list-item-desktop__group')
             for group in groups:
                 text = group.get_text(strip=True)
-                # Simple logic: check for presence of specific icons or text patterns
                 if group.find('i', class_='cjicon-locker'):
                     clearance = text
                 elif group.find('i', class_='cjicon-polygraph'):
@@ -141,7 +184,7 @@ def process_scraped_data(job_cards):
             desc_node = card.select_one('.job-search-list-item-desktop__description')
             description_preview = desc_node.get_text(strip=True) if desc_node else ""
 
-            # Build the JSON object
+            # Build the JSON object and record link as seen
             extracted_data.append({
                 "role_name": role_name,
                 "company": company,
@@ -151,8 +194,8 @@ def process_scraped_data(job_cards):
                 "remote_eligible": "On-Site" if "(On-Site" in full_description else "Remote/Hybrid Search Needed",
                 "salary": {
                     "raw": f"${salary_data['min']} - ${salary_data['max']}" if salary_data['min'] else "Not Listed",
-                    "min_val": salary_data['min'],
-                    "max_val": salary_data['max']
+                    "min_val": salary_data['min'] if salary_data.get('min') else 0,
+                    "max_val": salary_data['max'] if salary_data.get('max') else 0
                 },
                 "travel_req": "10%" if "10% of the Time" in full_description else "Check Description",
                 "clearance_required": clearance,
@@ -163,14 +206,16 @@ def process_scraped_data(job_cards):
                 "full_description": full_description
             })
 
-        except Exception as e:
+            seen_links.add(role_link)
+
+        except ConnectionError as e:
             # If one card fails, print the error and continue to the next
             print(f"Error parsing card: {e}")
             continue
 
-    return extracted_data
+    return extracted_data, seen_links
     
-def finalize_to_json(data_list, filename="jobs_data.json"):
+def finalize_to_json(data_list, filename="ClearanceJobs/JobData/jobs_data.json"):
     cleaned_data = []
     
     for entry in data_list:
@@ -205,17 +250,76 @@ def finalize_to_json(data_list, filename="jobs_data.json"):
         json.dump(cleaned_data, f, indent=4)
     
     return json.dumps(cleaned_data, indent=4) # Returns as a JSON string
-# Example Usage with your provided snippet:
-baseURL = "https://www.clearancejobs.com/jobs?loc=5&received=31&ind=nq,nr,pg,nu,nv"
-total_pages = 3#get_total_pages()
-all_jobs = []
-for i in range(1,total_pages+1):  # Simulate multiple pages if needed
-    currentURL = f"{baseURL}&PAGE={i}"
-    print(f"Scraping Page {i} of {total_pages}: {currentURL}")
-    jitter()  # Random delay before each request
-    data = parse_clearance_job_html(baseURL)
-    all_jobs.extend( process_scraped_data(data))
-finalize_to_json(all_jobs, filename="job_data_ClearenceJobs.json")
-print("Scraping complete. Data saved to job_data_ClearenceJobs.json")
-print(f'total_jobs: {len(all_jobs)}')
+
+def scrape_page_worker(page_num, base_url):
+    """
+    Worker function to handle a single page iteration.
+    Returns a list of jobs found on that page.
+    """
+    current_url = f"{base_url}&PAGE={page_num}"
+    print(f"[+] Scraping Page {page_num}: {current_url}")
+    
+    try:
+        # Note: jitter() is usually for sequential; in multi-threading, 
+        # the natural spread of thread start times often provides enough 'jitter'.
+        # jitter() 
+        
+        data = parse_clearance_job_html(current_url)
+        
+        # We pass an empty set here because we will de-duplicate 
+        # globally once all threads are finished.
+        page_jobs, _ = process_scraped_data(data, seen_links=set())
+        return page_jobs
+    except Exception as e:
+        print(f"[!] Error on Page {page_num}: {e}")
+        return []
+########################################    
+### Main                             ###
+########################################
+if __name__ == "__main__":
+    # Example Usage with your provided snippet:
+    baseURL = "https://www.clearancejobs.com/jobs?loc=5&received=31&ind=nq,nr,pg,nu,nv"
+    total_pages = get_total_pages()
+    all_raw_jobs = []
+        
+    # --- Multi-threaded Execution ---
+    # max_workers=5 is a safe starting point. 
+    # Too many can get your IP flagged by the site's firewall.
+    print(f"Starting Multi-threaded Scraper for {total_pages} pages...")
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # Map the worker function to all page numbers
+        future_to_page = {executor.submit(scrape_page_worker, i, baseURL): i for i in range(1, total_pages + 1)}
+        
+        for future in concurrent.futures.as_completed(future_to_page):
+            page_results = future.result()
+            if page_results:
+                all_raw_jobs.extend(page_results)
+
+    # --- Final De-duplication & Sorting ---
+    # Since threads return data in random order, we clean it up here.
+    seen_links = set()
+    unique_jobs = []
+    
+    for job in all_raw_jobs:
+        link = job.get('link')
+        if link not in seen_links:
+            # .copy() creates a unique instance so it won't be overwritten
+            unique_jobs.append(job.copy()) 
+            seen_links.add(link)
+
+    # Finalize to JSON
+    print(unique_jobs)
+    
+    finalize_to_json(unique_jobs, filename="JobData/ClearanceJobs/jobs_data.json")
+    
+    print("--------------------------------------------------------")
+    print(f"✅ Scraping complete. Data saved to jobs_data.json")
+    print(f"📊 Total raw items found: {len(all_raw_jobs)}")
+    print(f"🎯 Total unique jobs: {len(unique_jobs)}")
+    print("--------------------------------------------------------")
+
+    # finalize_to_json(all_jobs, filename="ClearanceJobs/JobData/jobs_data.json")
+    # print("Scraping complete. Data saved to job_data_ClearenceJobs.json")
+    # print(f'total_jobs: {len(all_jobs)}')
 

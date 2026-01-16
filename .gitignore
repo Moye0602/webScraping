@@ -78,7 +78,7 @@ db.sqlite3-journal
 .envrc
 
 # general files
-.docx
+*.docx
 *.pdf
 
 # Editor/IDE
@@ -96,3 +96,6 @@ site-packages/
 # Other common folders to ignore
 __MACOSX/
 node_modules/
+JobData/
+Legacy/
+tests/
