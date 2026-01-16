@@ -1,4 +1,4 @@
-import json
+import json, os
 from pprint import pprint
 from bs4 import BeautifulSoup
 from icecream import ic
@@ -6,7 +6,8 @@ import requests
 import time,random
 import concurrent.futures
 from datetime import datetime
-
+import  _init__
+from common.helper import cprint 
 def jitter():
     jitterTime = random.uniform(0, 1)  # Random time between 0 to 2 seconds
     print(f"Jittering for {jitterTime:.2f} seconds...",end='\r')
@@ -31,10 +32,10 @@ def get_total_pages():
         page_buttons = pagination.find_all('button', class_='btn')
         # Filter for buttons that contain only digits
         pages = [int(btn.get_text()) for btn in page_buttons if btn.get_text().isdigit()]
-        print(f"Detected {max(pages) if pages else 1} pages to scrape.")
+        cprint(f"Detected {max(pages) if pages else 1} pages to scrape.", color = 'green')
         return max(pages) if pages else 1
     except Exception:
-        print(f"Detected {1} pages to scrape.")
+        cprint(f"Detected {1} pages to scrape.", color = 'yellow')
         return 1
 
 def parse_clearance_job_html(url: str):
@@ -46,7 +47,7 @@ def parse_clearance_job_html(url: str):
         response.raise_for_status()
         html_content = response.text
     except Exception as e:
-        print(f"Warning: failed to fetch {url}: {e}")
+        cprint(f"Warning: failed to fetch {url}: {e}", color = 'red')
         return []
 
     # 2. Feed that document to Beautiful Soup
@@ -82,7 +83,7 @@ def scrape_full_description(page, url):
         full_description = page.locator(".job-description-text").inner_text()
         return full_description.strip()
     except Exception as e:
-        print(f"  [!] Failed to deep-scrape {url}: {e}")
+        cprint(f"  [!] Failed to deep-scrape {url}: {e}", color = 'red')
         return "Full description not found."
 
 import re
@@ -135,13 +136,13 @@ def process_scraped_data(job_cards, seen_links: set = None):
             role_node = card.select_one('.job-search-list-item-desktop__job-name')
             if not role_node:
                 # skip malformed card
-                print(f"Skipping malformed card at index {idx}")
+                cprint(f"Skipping malformed card at index {idx}", color = 'red')
                 continue
             role_name = role_node.get_text(strip=True)
             # Prepend base URL for the link
             role_href = role_node.get('href')
             if not role_href:
-                print(f"Skipping card with missing href for role '{role_name}'")
+                cprint(f"Skipping card with missing href for role '{role_name}'", color = 'red')
                 continue
             role_link = "https://www.clearancejobs.com" + role_href
 
@@ -151,8 +152,8 @@ def process_scraped_data(job_cards, seen_links: set = None):
                 continue
 
             #1.5 Deep scraping for full description
-            role_nameTruncate = role_name[:30]
-            print(f"{idx} |Deep scraping: {role_name}...")
+            # role_nameTruncate = role_name[:30]
+            cprint(f"{idx} |Deep scraping: {role_name}...", color = 'blue')
             full_description = get_full_job_details(role_link)
             salary_data = extract_salary(full_description)
             jitter()
@@ -210,12 +211,13 @@ def process_scraped_data(job_cards, seen_links: set = None):
 
         except ConnectionError as e:
             # If one card fails, print the error and continue to the next
-            print(f"Error parsing card: {e}")
+            cprint(f"Error parsing card: {e}", color = 'red')
             continue
 
     return extracted_data, seen_links
     
-def finalize_to_json(data_list, filename="ClearanceJobs/JobData/jobs_data.json"):
+def finalize_to_json(data_list, directory= "ClearanceJobs/JobData/", filename="jobs_data.json"):
+    os.makedirs(directory, exist_ok=True)
     cleaned_data = []
     
     for entry in data_list:
@@ -257,8 +259,8 @@ def scrape_page_worker(page_num, base_url):
     Returns a list of jobs found on that page.
     """
     current_url = f"{base_url}&PAGE={page_num}"
-    print(f"[+] Scraping Page {page_num}: {current_url}")
-    
+    cprint(f"[+] Scraping Page {page_num}: {current_url}",color = 'green')
+
     try:
         # Note: jitter() is usually for sequential; in multi-threading, 
         # the natural spread of thread start times often provides enough 'jitter'.
@@ -271,14 +273,18 @@ def scrape_page_worker(page_num, base_url):
         page_jobs, _ = process_scraped_data(data, seen_links=set())
         return page_jobs
     except Exception as e:
-        print(f"[!] Error on Page {page_num}: {e}")
+        cprint(f"[!] Error on Page {page_num}: {e}",color = 'red')
         return []
 ########################################    
 ### Main                             ###
 ########################################
 if __name__ == "__main__":
     # Example Usage with your provided snippet:
-    baseURL = "https://www.clearancejobs.com/jobs?loc=5&received=31&ind=nq,nr,pg,nu,nv"
+    baseURL = input("Enter ClearanceJobs URL (or press Enter for default): ").strip()
+    if not baseURL:
+        input("No URL provided. Using default ClearanceJobs URL. Press Enter to continue...")
+        baseURL = "http://www.clearancejobs.com/jobs?loc=5&received=31&ind=nq,nr,pg,nu,nv"
+    
     total_pages = get_total_pages()
     all_raw_jobs = []
         
@@ -309,9 +315,7 @@ if __name__ == "__main__":
             seen_links.add(link)
 
     # Finalize to JSON
-    print(unique_jobs)
-    
-    finalize_to_json(unique_jobs, filename="JobData/ClearanceJobs/jobs_data.json")
+    finalize_to_json(unique_jobs, directory= "ClearanceJobs/JobData/", filename="jobs_data.json")
     
     print("--------------------------------------------------------")
     print(f"✅ Scraping complete. Data saved to jobs_data.json")
