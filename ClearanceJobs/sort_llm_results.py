@@ -279,7 +279,7 @@ def flatten_and_sort(master: Dict[str, Dict[str, Dict[str, Any]]], *, descending
         role_list: List[Dict[str, Any]] = []
         for role_name, detail in roles.items():
             score = parse_score(detail.get('score'))
-            if score < 80:
+            if score < 0:
                 continue
             row = {
                 'company': company,
@@ -379,7 +379,7 @@ def summarize(data: Dict[str, List[Dict[str, Any]]], top_n: Optional[int] = None
         for r in filtered:
             sc = r.get('score')
             sc_text = 'N/A' if sc == -1 else f'{sc:.1f}'
-            if float(sc_text) > 80:
+            if float(sc_text) > 50:
                 print(f'\n{company} ({len(filtered)} roles shown)')
                 print(f"  - {r['role_name']} | score: {sc_text} | link: {r.get('link')}")
             

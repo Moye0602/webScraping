@@ -6,7 +6,7 @@ import google.generativeai as genai
 from playwright.sync_api import sync_playwright
 from tqdm import tqdm
 from docx import Document
-
+from profileSettings import minSalary, minScore
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
@@ -20,6 +20,86 @@ def jitter():
     print(f"Jittering for {jitterTime:.2f} seconds...",end='\r')
     time.sleep(jitterTime)  # Random delay to mimic human behavior
 
+# Setup API Key
+api_key = os.getenv("GENAI_API_KEY")
+genai.configure(api_key=api_key)
+
+def get_model_selection():
+    """
+    Lists Gemini models sorted by Free Tier availability first, 
+    then Paid-only models.
+    """
+    try:
+        raw_models = genai.list_models()
+        
+        # Define known "Paid Only" models based on 2026 status
+        # Note: gemini-3-pro and specialized 'image' variants usually require billing.
+        paid_keywords = ["-3-pro", "image", "ultra", "vision"]
+        
+        free_tier = []
+        paid_tier = []
+
+        for m in raw_models:
+            if 'generateContent' in m.supported_generation_methods:
+                model_data = {"display_name": m.display_name, "name": m.name}
+                
+                # Sort logic: check if name contains any paid keywords
+                if any(key in m.name.lower() for key in paid_keywords):
+                    paid_tier.append(model_data)
+                else:
+                    free_tier.append(model_data)
+
+        # Combine lists: Free first, then Paid
+        all_selectable = free_tier + paid_tier
+        
+        print("\n--- Available Gemini Models ---")
+        print(f"{'#':<3} {'Model Name':<30} {'Tier Access'}")
+        print("-" * 50)
+
+        for i, m in enumerate(all_selectable, 1):
+            # Labeling the tier for clarity
+            is_free = i <= len(free_tier)
+            tier_label = "[FREE TIER]" if is_free else "[PAID ONLY]"
+            
+            # Highlight Flash-Lite or Flash as recommended for your scraper
+            rec = " ⭐" if "flash" in m['display_name'].lower() and is_free else ""
+            
+            print(f"{i:<3} {m['display_name']:<30} {tier_label}{rec}")
+
+        # User Input Logic
+        while True:
+            try:
+                msg = f"\nSelect model (1-{len(all_selectable)}) [Default: 1]: "
+                choice = input(msg).strip()
+                
+                if choice == "":
+                    selected = all_selectable[0]
+                    break
+                    
+                idx = int(choice)
+                if 1 <= idx <= len(all_selectable):
+                    selected = all_selectable[idx - 1]
+                    break
+                print("Out of range.")
+            except ValueError:
+                print("Enter a valid number.")
+
+        print(f"✅ Active Model: {selected['display_name']}")
+        return selected['name']
+
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return None
+# --- Example Usage ---
+# MODEL_ID = get_model_selection()
+# model = genai.GenerativeModel(MODEL_ID)
+
+# # Store models as JSON
+# with open("available_models.json", "w") as f:
+#     json.dump(models_list, f, indent=2)
+print(get_model_selection())
+model = genai.GenerativeModel('models/gemini-flash-lite-latest')
+# model = genai.GenerativeModel('models/gemini-3-flash-preview')
 
 def parse_salary(s):
     """Parse a salary value and return an integer amount in dollars.
@@ -44,27 +124,6 @@ def parse_salary(s):
         return 0
     except Exception:
         return 0
-
-# Setup API Key
-api_key = os.getenv("GENAI_API_KEY")
-genai.configure(api_key=api_key)
-# models = genai.list_models()
-# print('Available Models:')
-# models_list = []
-# for m in models:
-#     print(f"  - {m.display_name} (name: {m.name})")
-#     models_list.append({
-#         "display_name": m.display_name,
-#         "name": m.name
-#     })
-
-# # Store models as JSON
-# with open("available_models.json", "w") as f:
-#     json.dump(models_list, f, indent=2)
-
-# model = genai.GenerativeModel('models/gemini-flash-lite-latest')
-model = genai.GenerativeModel('models/gemini-3-flash-preview')
-
 
 def call_model_with_retries(prompt, max_retries=6, initial_backoff=1.0):
     """Call the LLM and handle rate-limit (429) errors with retry delays.
@@ -111,7 +170,7 @@ def match_roles(resume_text, jobs_json):
                 print("Reached processing limit for this run.")
                 break
             salary = parse_salary(job.get(['salary'].get('min_val', 0)))
-            if salary < 105000:
+            if salary < minSalary:
                  print(f"  [!] Skipping {job['role_name']} at {job['company']} due to low salary: ${salary}")
                  continue
             # Normalize salary value on the job dict for downstream use
@@ -164,8 +223,8 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
     for j in jobs_json:
         j['salary']['min_val'] = parse_salary(j['salary'].get('min_val', 0))
     print(len(jobs_json), "jobs loaded for batching.")
-    filtered_jobs = [j for j in jobs_json if j['salary'].get('min_val', 0) >= 105000]
-    print(f"Filtered jobs to {len(filtered_jobs)} with salary >= $105,000")
+    filtered_jobs = [j for j in jobs_json if j['salary'].get('min_val', 0) >= minSalary]
+    print(f"Filtered jobs to {len(filtered_jobs)} with salary >= ${minSalary}.")
 
     for batch in chunk_list(filtered_jobs, batch_size):
         # Create a simplified version of the jobs for the prompt to save tokens
@@ -315,7 +374,7 @@ def create_nested_master_json(data_list, filename=f"llm_data_ClearenceJobs.json"
         
         salary = parse_salary(item.get('salary', {}).get('min_val', 0))
         item['salary_min'] = salary
-        if salary < 94000:
+        if salary < minSalary:
              print(f"  [!] Skipping {role} at {company} due to low salary: ${salary}")
              continue
 
@@ -341,12 +400,43 @@ def create_nested_master_json(data_list, filename=f"llm_data_ClearenceJobs.json"
 
 ####################################################
 # Usage
-resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
+import os
+
+# 1. Get list of docx files
+docx_files = [f for f in os.listdir('./Resumes') if f.endswith('.docx')]
+
+if not docx_files:
+    print("❌ No .docx files found in the current directory.")
+    exit()
+
+# 2. Display the list to the user
+print("\n--- Available Resumes ---")
+for i, filename in enumerate(docx_files, 1):
+    print(f"{i}. {filename}")
+
+# 3. Handle selection
+while True:
+    try:
+        choice = int(input(f"\nSelect a resume by number (1-{len(docx_files)}): "))
+        if 1 <= choice <= len(docx_files):
+            selected_resume = docx_files[choice - 1]
+            break
+        else:
+            print(f"Please enter a number between 1 and {len(docx_files)}.")
+    except ValueError:
+        print("Invalid input. Please enter a number.")
+
+# 4. Extract text from the chosen file
+print(f"✅ Selected: {selected_resume}")
+resume_text = extract_text_from_docx(f'./Resumes/{selected_resume}')
+input("Press Enter to continue...")
+
+# resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
 # print("Resume extracted. Length:", resume_text)
 with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
     jobs_json = json.load(f)
 print(f"Loaded {len(jobs_json)} jobs from JSON.")
-# Process the jobs in batches filled with qualifying jobs (salary >= 94k) to improve LLM efficiency
+# Process the jobs in batches filled with qualifying jobs (salary >= minSalary) to improve LLM efficiency
 out_dir = 'JobData/ClearanceJobs/llmIn'
 os.makedirs(out_dir, exist_ok=True)
 chunk_size = 30  # target number of jobs per LLM batch
@@ -359,7 +449,7 @@ import math
 
 # ... (your previous imports and function defs) ...
 
-resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
+# resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
 with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
     jobs_json = json.load(f)
 
@@ -383,7 +473,7 @@ while idx < total_jobs:
         job = jobs_json[idx]
         salary_val = parse_salary(job.get('salary', {}).get('min_val', 0))
         
-        if salary_val >= 105000:
+        if salary_val >= minSalary:
             batch.append(job)
             qualifying_count += 1
         
