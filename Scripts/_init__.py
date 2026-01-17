@@ -10,7 +10,9 @@ subdirectories = [ "llmOut", "llmIn"]
     
 directories = [
     "JobData/ClearanceJobs",
-    "JobData/LinkedinJobs",]
+    "JobData/LinkedinJobs",
+    "JobData/DiceJobs",
+    "JobData/BuiltInJobs",]
 for directory in directories:
     baseDirectory = directory
     if not os.path.exists(directory):
