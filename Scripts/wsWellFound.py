@@ -1,0 +1,385 @@
+import json, os
+from pprint import pprint
+from bs4 import BeautifulSoup
+from icecream import ic
+import requests, re
+import time,random
+import concurrent.futures
+from datetime import datetime
+import  _init__
+from common.helper import cprint 
+
+global BASE_URL
+BASE_URL = "https://wellfound.com"
+
+def jitter():
+    jitterTime = random.uniform(0, 1)  # Random time between 0 to 2 seconds
+    print(f"Jittering for {jitterTime:.2f} seconds...",end='\r')
+    time.sleep(jitterTime)  # Random delay to mimic human behavior
+
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from bs4 import BeautifulSoup
+
+def get_rendered_soup(url):
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+
+    driver = webdriver.Chrome(options=options)
+
+    try:
+        driver.get(url)
+
+        # WAIT for React to render at least one company card
+        WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "[data-testid='startup-header']"))
+        )
+
+        html = driver.page_source
+        return BeautifulSoup(html, "html.parser")
+
+    except Exception as e:
+        print("Render failed:", e)
+        return None
+
+    finally:
+        driver.quit()
+
+print(get_rendered_soup("https://wellfound.com/location/los-angeles"))
+
+
+
+
+def get_company_links(page_number):
+    url = f"https://wellfound.com/location/los-angeles?page={page_number}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    company_links = []
+
+    # Find all <a> tags with href starting with "/company/"
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+
+        if href.startswith("/company/"):
+            full_url = BASE_URL + href
+
+            # Avoid duplicates (company logos appear twice sometimes)
+            if full_url not in company_links:
+                company_links.append(full_url)
+
+    print(f"Found {len(company_links)} companies on page {page_number}")
+    return company_links
+
+#########################################   
+### Scraping Functions              ###
+#########################################
+all_companies = []
+
+total_pages = get_total_pages()
+
+for page in range(1, total_pages + 1):
+    all_companies.extend(get_company_links(page))
+pprint(all_companies)
+
+
+#########################################
+def parse_clearance_job_html(url: str):
+    """Fetch the job list page for the given URL and return job card elements."""
+    headers = {"User-Agent": "Mozilla/5.0"} # Mimics a real browser
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        html_content = response.text
+    except Exception as e:
+        cprint(f"Warning: failed to fetch {url}: {e}", color = 'red')
+        return []
+
+    # 2. Feed that document to Beautiful Soup
+    soup = BeautifulSoup(html_content, 'html.parser')
+
+    # Target the main container identified in your screenshot
+    return soup.select('div.job-search-list-item-desktop')
+
+def get_full_job_details(url):
+    """Fetches the full description from a standalone link."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        # 1. Fetch the page
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        # 2. Parse the specific div
+        soup = BeautifulSoup(response.text, 'html.parser')
+        desc_node = soup.select_one(".job-description-text")
+        
+        return desc_node.get_text(separator="\n", strip=True) if desc_node else "Full text container not found."
+    except Exception as e:
+        return f"Error fetching details: {e}"
+    
+def scrape_full_description(page, url):
+    """Navigates to the job link and pulls the deep-dive text."""
+    try:
+        page.goto(url, wait_until="domcontentloaded")
+        # Explicitly wait for the class you identified
+        page.wait_for_selector(".job-description-text", timeout=5000)
+        full_description = page.locator(".job-description-text").inner_text()
+        return full_description.strip()
+    except Exception as e:
+        cprint(f"  [!] Failed to deep-scrape {url}: {e}", color = 'red')
+        return "Full description not found."
+
+import re
+
+def extract_salary(text):
+    """Parse salary from text and return integer min/max in dollars.
+
+    Returns dict with integer values or 0 when not found.
+    Examples handled:
+      - "$118,600.00 - $178,000.00" => {"min": 118600, "max": 178000}
+      - "$118,600" => {"min": 118600, "max": 118600}
+      - no match => {"min": 0, "max": 0}
+    """
+    def to_int(num_str: str) -> int:
+        try:
+            # remove commas and cast through float to handle decimals
+            return int(float(num_str.replace(',', '')))
+        except Exception:
+            return 0
+
+    # Range pattern
+    range_pattern = r"\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*-\s*\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)"
+    m = re.search(range_pattern, text) 
+
+    if m:
+        return {"min": to_int(m.group(1)), "max": to_int(m.group(2))}
+
+    # Single value pattern
+    single_pattern = r"\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)"
+    m = re.search(single_pattern, text)
+    if m:
+        val = to_int(m.group(1))
+        return {"min": val, "max": val}
+
+    return {"min": 0, "max": 0}
+
+def process_scraped_data(job_cards, seen_links: set = None):
+    """Process a list of job cards and return deduplicated extracted data.
+
+    seen_links: optional set of URLs used to dedupe across pages. If not provided a new set
+    will be used locally.
+    """
+    extracted_data = []
+    if seen_links is None:
+        seen_links = set()
+
+    for idx, card in enumerate(job_cards, start=1):
+        try:
+            # 1. Role and Link (Drilling into the 'Header' and 'Job Name Wrapper')
+            role_node = card.select_one('.job-search-list-item-desktop__job-name')
+            if not role_node:
+                # skip malformed card
+                cprint(f"Skipping malformed card at index {idx}", color = 'red')
+                continue
+            role_name = role_node.get_text(strip=True)
+            # Prepend base URL for the link
+            role_href = role_node.get('href')
+            if not role_href:
+                cprint(f"Skipping card with missing href for role '{role_name}'", color = 'red')
+                continue
+            role_link = "https://www.clearancejobs.com" + role_href
+
+            # Deduplicate on link
+            if role_link in seen_links:
+                print(f"Skipping duplicate job link: {role_link}")
+                continue
+
+            #1.5 Deep scraping for full description
+            # role_nameTruncate = role_name[:30]
+            cprint(f"{idx} |Deep scraping: {role_name}...", color = 'blue')
+            full_description = get_full_job_details(role_link)
+            salary_data = extract_salary(full_description)
+            jitter()
+
+            # 2. Company
+            company_node = card.select_one('.job-search-list-item-desktop__company-name a')
+            company = company_node.get_text(strip=True) if company_node else "Unknown"
+
+            # 3. Location (Handling the San Diego, CA On-Site structure)
+            location_node = card.select_one('.cj-multiple-locations__location-name')
+            location_text = location_node.get_text(strip=True) if location_node else "N/A"
+
+            # 4. Meta Data (Clearance, Date, Poly)
+            clearance = "Not Specified"
+            poly = "Not Specified"
+            posted = "Unknown"
+
+            groups = card.find_all('div', class_='job-search-list-item-desktop__group')
+            for group in groups:
+                text = group.get_text(strip=True)
+                if group.find('i', class_='cjicon-locker'):
+                    clearance = text
+                elif group.find('i', class_='cjicon-polygraph'):
+                    poly = text
+                elif "Posted" in text:
+                    posted = text
+
+            # 5. Summary/Description
+            desc_node = card.select_one('.job-search-list-item-desktop__description')
+            description_preview = desc_node.get_text(strip=True) if desc_node else ""
+
+            # Build the JSON object and record link as seen
+            extracted_data.append({
+                "role_name": role_name,
+                "company": company,
+                "link": role_link,
+                "location": location_text,
+                "date_posted": posted,
+                "remote_eligible": "On-Site" if "(On-Site" in full_description else "Remote/Hybrid Search Needed",
+                "salary": {
+                    "raw": f"${salary_data['min']} - ${salary_data['max']}" if salary_data['min'] else "Not Listed",
+                    "min_val": salary_data['min'] if salary_data.get('min') else 0,
+                    "max_val": salary_data['max'] if salary_data.get('max') else 0
+                },
+                "travel_req": "10%" if "10% of the Time" in full_description else "Check Description",
+                "clearance_required": clearance,
+                "polygraph": poly,
+                "years_exp_required": "8+" if "8 years" in full_description else "Not specified",
+                "is_contingent": "Yes" if "contingent on program funding" in full_description.lower() else "No",
+                "description_preview": description_preview,
+                "full_description": full_description
+            })
+
+            seen_links.add(role_link)
+
+        except ConnectionError as e:
+            # If one card fails, print the error and continue to the next
+            cprint(f"Error parsing card: {e}", color = 'red')
+            continue
+
+    return extracted_data, seen_links
+    
+def finalize_to_json(data_list, directory= "ClearanceJobs/JobData/", filename="jobs_data.json"):
+    os.makedirs(directory, exist_ok=True)
+    cleaned_data = []
+    
+    for entry in data_list:
+        # CLEANUP: Fixing the concatenated 'clearance' field
+        # We extract 'Secret' or 'Top Secret' from the messy string
+        raw_clearance = entry.get('clearance', '')
+        actual_clearance = "Secret" if "Secret" in raw_clearance else "Not Specified"
+        if "Top Secret" in raw_clearance: actual_clearance = "Top Secret"
+        
+        # CLEANUP: Extracting the real date if it was stuck in the clearance field
+        date_val = "Posted today" if "today" in raw_clearance else entry.get('date_posted')
+        clean_entry = {
+            "role_name": entry['role_name'],
+            "company": entry['company'],
+            "link": entry['link'],
+            "location": entry['location'],
+            "date_posted": date_val,
+            "clearance": actual_clearance,
+            "travel_req": entry.get('travel_req', 'Check Description'),
+            "remote_eligible": entry.get('remote_eligible', 'Remote/Hybrid Search Needed'),
+            "salary": entry.get('salary', {'raw': 'Not Listed', 'min_val': None, 'max_val': None}),
+            "polygraph": entry['polygraph'],
+            "years_exp_required": entry.get('years_exp_required', 'Not specified'),
+            "is_contingent": entry.get('is_contingent', 'No'),
+            "full_description": entry['full_description']
+            # "description_preview": entry['description_preview']
+        }
+        cleaned_data.append(clean_entry)
+
+    # Convert List to JSON and write to file
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(cleaned_data, f, indent=4)
+    
+    return json.dumps(cleaned_data, indent=4) # Returns as a JSON string
+
+def scrape_page_worker(page_num, base_url):
+    """
+    Worker function to handle a single page iteration.
+    Returns a list of jobs found on that page.
+    """
+    current_url = f"{base_url}&PAGE={page_num}"
+    cprint(f"[+] Scraping Page {page_num}: {current_url}",color = 'green')
+
+    try:
+        # Note: jitter() is usually for sequential; in multi-threading, 
+        # the natural spread of thread start times often provides enough 'jitter'.
+        # jitter() 
+        
+        data = parse_clearance_job_html(current_url)
+        
+        # We pass an empty set here because we will de-duplicate 
+        # globally once all threads are finished.
+        page_jobs, _ = process_scraped_data(data, seen_links=set())
+        return page_jobs
+    except Exception as e:
+        cprint(f"[!] Error on Page {page_num}: {e}",color = 'red')
+        return []
+########################################    
+### Main                             ###
+########################################
+if 0 and __name__ == "__main__":
+    # Example Usage with your provided snippet:
+    baseURL = input("Enter WellFound URL (or press Enter for default): ").strip()
+    if not baseURL:
+        input("No URL provided. Using default WellFound URL. Press Enter to continue...")
+        baseURL = "https://wellfound.com/location/los-angeles"
+    
+    total_pages = get_total_pages()
+    all_raw_jobs = []
+        
+    # --- Multi-threaded Execution ---
+    # max_workers=5 is a safe starting point. 
+    # Too many can get your IP flagged by the site's firewall.
+    print(f"Starting Multi-threaded Scraper for {total_pages} pages...")
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # Map the worker function to all page numbers
+        future_to_page = {executor.submit(scrape_page_worker, i, baseURL): i for i in range(1, total_pages + 1)}
+        
+        for future in concurrent.futures.as_completed(future_to_page):
+            page_results = future.result()
+            if page_results:
+                all_raw_jobs.extend(page_results)
+
+    # --- Final De-duplication & Sorting ---
+    # Since threads return data in random order, we clean it up here.
+    seen_links = set()
+    unique_jobs = []
+    
+    for job in all_raw_jobs:
+        link = job.get('link')
+        if link not in seen_links:
+            # .copy() creates a unique instance so it won't be overwritten
+            unique_jobs.append(job.copy()) 
+            seen_links.add(link)
+
+    # Finalize to JSON
+    finalize_to_json(unique_jobs, directory= "ClearanceJobs/JobData/", filename="jobs_data.json")
+    
+    print("--------------------------------------------------------")
+    print(f"✅ Scraping complete. Data saved to jobs_data.json")
+    print(f"📊 Total raw items found: {len(all_raw_jobs)}")
+    print(f"🎯 Total unique jobs: {len(unique_jobs)}")
+    print("--------------------------------------------------------")
+
+    # finalize_to_json(all_jobs, filename="ClearanceJobs/JobData/jobs_data.json")
+    # print("Scraping complete. Data saved to job_data_ClearenceJobs.json")
+    # print(f'total_jobs: {len(all_jobs)}')
+

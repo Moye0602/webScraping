@@ -13,8 +13,8 @@ def jitter():
     print(f"Jittering for {jitterTime:.2f} seconds...",end='\r')
     time.sleep(jitterTime)  # Random delay to mimic human behavior
 
-def get_total_pages():
-    url = "https://www.clearancejobs.com/jobs?loc=5%2C9&received=31&ind=nq%2Cnr%2Cpg%2Cnu%2Cnv"
+def get_total_pages(url: str = None) -> int:
+    # url = "https://www.clearancejobs.com/jobs?loc=5%2C9&received=31&ind=nq%2Cnr%2Cpg%2Cnu%2Cnv"
     headers = {"User-Agent": "Mozilla/5.0"} # Mimics a real browser
     # 1. Get the document behind the URL
 
@@ -248,7 +248,7 @@ def finalize_to_json(data_list, directory= "ClearanceJobs/JobData/", filename="j
         cleaned_data.append(clean_entry)
 
     # Convert List to JSON and write to file
-    with open(filename, 'w', encoding='utf-8') as f:
+    with open(f'{directory}{filename}', 'w', encoding='utf-8') as f:
         json.dump(cleaned_data, f, indent=4)
     
     return json.dumps(cleaned_data, indent=4) # Returns as a JSON string
@@ -283,9 +283,9 @@ if __name__ == "__main__":
     baseURL = input("Enter ClearanceJobs URL (or press Enter for default): ").strip()
     if not baseURL:
         input("No URL provided. Using default ClearanceJobs URL. Press Enter to continue...")
-        baseURL = "http://www.clearancejobs.com/jobs?loc=5&received=31&ind=nq,nr,pg,nu,nv"
+        baseURL = "https://www.clearancejobs.com/jobs?loc=5,9&received=31&ind=nq,nr,pg,nu,nv,nz,pd,nw,nt&limit=50"
     
-    total_pages = get_total_pages()
+    total_pages = get_total_pages(baseURL)
     all_raw_jobs = []
         
     # --- Multi-threaded Execution ---
@@ -315,7 +315,7 @@ if __name__ == "__main__":
             seen_links.add(link)
 
     # Finalize to JSON
-    finalize_to_json(unique_jobs, directory= "ClearanceJobs/JobData/", filename="jobs_data.json")
+    finalize_to_json(unique_jobs, directory= "JobData/ClearanceJobs/", filename="jobs_data.json")
     
     print("--------------------------------------------------------")
     print(f"✅ Scraping complete. Data saved to jobs_data.json")

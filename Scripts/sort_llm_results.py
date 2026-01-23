@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 import glob
 from datetime import datetime
 import pandas as pd
-
+from profileSettings import minSalary, minScore
 
 def parse_score(s: Any) -> Optional[float]:
     """Parse a score value into a float (0-100). Returns None if missing/invalid."""
@@ -279,7 +279,7 @@ def flatten_and_sort(master: Dict[str, Dict[str, Dict[str, Any]]], *, descending
         role_list: List[Dict[str, Any]] = []
         for role_name, detail in roles.items():
             score = parse_score(detail.get('score'))
-            if score < 0:
+            if score < minScore:
                 continue
             row = {
                 'company': company,
@@ -507,7 +507,7 @@ def cli(argv=None):
                         print('No rows available to build a DataFrame for combined output.')
                     else:
                         if args.to_pandas:
-                            if args.top_n and args.top_n > 0:
+                            if args.top_n and args.top_n > minScore:
                                 top_df = df.groupby('company', group_keys=False).apply(lambda g: g.nlargest(args.top_n, 'score'))
                                 print(top_df.reset_index(drop=True).to_string(index=False))
                             else:
@@ -602,7 +602,7 @@ def cli(argv=None):
                     print('No rows available to build a DataFrame for this file.')
                 else:
                     if args.to_pandas:
-                        if args.top_n and args.top_n > 0:
+                        if args.top_n and args.top_n > minScore:
                             top_df = df.groupby('company', group_keys=False).apply(lambda g: g.nlargest(args.top_n, 'score'))
                             print(top_df.reset_index(drop=True).to_string(index=False))
                         else:
@@ -644,7 +644,7 @@ def cli(argv=None):
         else:
             if args.to_pandas:
                 # Show the top N per company for readable console output
-                if args.top_n and args.top_n > 0:
+                if args.top_n and args.top_n > minScore:
                     top_df = df.groupby('company', group_keys=False).apply(lambda g: g.nlargest(args.top_n, 'score'))
                     print(top_df.reset_index(drop=True).to_string(index=False))
                 else:
@@ -693,9 +693,12 @@ def create_master_json_from_folder(folder_path: str, output_filename: str) -> Di
             print(f"Error skipping file {filename}: {e}")
 
     # 3. Save the combined master file
-    with open(output_filename, 'w', encoding='utf-8') as f:
+    dir1 = "JobData/ClearanceJobs/"
+    dir2 = "my-job-board/src/MASTER_ANALYSIS.json"
+    with open(dir1 + output_filename, 'w', encoding='utf-8') as f:
         json.dump(master_data, f, indent=4)
-        
+    with open(dir2 + output_filename, 'w', encoding='utf-8') as f:
+        json.dump(master_data, f, indent=4)
     print(f"✅ Success! Combined {len(files)} files into {output_filename}")
     return master_data
 
@@ -735,7 +738,7 @@ def generate_job_report(master_json_path):
         df['score'] = 0
 
     # 5. Sort by Score (Desc) and Company (Asc)
-    df_sorted = df.sort_values(by=['score', 'company'], ascending=[False, True])
+    df_sorted = df.sort_values(by=['score', 'company'], ascending=[False, True]).head(50)
 
     # 6. Select Clean View
     # We drop 'full_description' for the terminal view because it's massive
@@ -756,6 +759,6 @@ if __name__ == '__main__':
     
     cli()
     folder_path = 'JobData/ClearanceJobs/llmOut'
-    output_filename = "JobData/ClearanceJobs/MASTER_ANALYSIS.json"
+    output_filename = "MASTER_ANALYSIS.json"
     create_master_json_from_folder(folder_path, output_filename)
     print(generate_job_report(output_filename))

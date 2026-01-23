@@ -1,0 +1,101 @@
+.dashboard { padding: 2rem; font-family: sans-serif; background: #f4f7f6; min-height: 100vh; }
+.job-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem; }
+.job-card { background: white; padding: 1.5rem; border-radius: 8px; border-left: 5px solid #005eb8; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+.score-badge { background: #e6fffa; color: #234e52; padding: 4px 8px; border-radius: 4px; font-weight: bold; float: right; }
+.apply-btn { display: inline-block; margin-top: 1rem; padding: 10px 20px; background: #005eb8; color: white; text-decoration: none; border-radius: 4px; }
+input { width: 100%; padding: 12px; margin-bottom: 2rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
+/* Ensure the overall background isn't white-on-white */
+:root {
+  background-color: #f4f7f9;
+  color: #1a1a1a; /* Force dark text globally */
+}
+
+.dashboard {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+h1 {
+  color: #002d72; /* Dark blue for the header */
+  text-align: center;
+}
+
+.search-bar {
+  width: 100%;
+  padding: 15px;
+  margin: 20px 0 40px 0;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  background-color: white;
+  color: black; /* Ensure typed text is visible */
+}
+
+.job-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 25px;
+}
+
+/* Card Styling with High Contrast */
+.job-card {
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+.company-tag {
+  color: #005eb8;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+}
+
+.job-card h2 {
+  color: #1a1a1a; /* Solid black/dark grey title */
+  margin: 10px 0;
+  font-size: 1.3rem;
+}
+
+.location {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 15px;
+}
+
+/* Ensure sub-sections are visible */
+.section-title {
+  color: #333;
+  font-weight: bold;
+  margin-top: 15px;
+  font-size: 0.9rem;
+}
+
+.description-text {
+  color: #444; /* Dark grey for readability */
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.skills-list {
+  color: #d9534f; /* Muted red for "missing" skills */
+  padding-left: 20px;
+}
+
+.apply-btn {
+  margin-top: auto;
+  background: #005eb8;
+  color: white !important; /* Force white text on blue button */
+  text-align: center;
+  padding: 12px;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: bold;
+}

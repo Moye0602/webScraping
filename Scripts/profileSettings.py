@@ -1,2 +1,2 @@
-minSalary = 0
-minScore = 0
+minSalary = 94000
+minScore = 80
