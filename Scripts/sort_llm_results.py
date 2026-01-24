@@ -20,7 +20,7 @@ import glob
 from datetime import datetime
 import pandas as pd
 from profileSettings import minSalary, minScore
-
+import subprocess
 def parse_score(s: Any) -> Optional[float]:
     """Parse a score value into a float (0-100). Returns None if missing/invalid."""
     if s is None:
@@ -288,8 +288,9 @@ def flatten_and_sort(master: Dict[str, Dict[str, Dict[str, Any]]], *, descending
                 # 'raw_score': detail.get('score'),
                 'fit_reason': detail.get('fit_reason'),
                 'missing_skills': detail.get('missing_skills'),
+                'matching_skills': detail.get('matching_skills'),
                 'link': detail.get('link'),
-                **{k: v for k, v in detail.items() if k not in ('score', 'fit_reason', 'missing_skills', 'link')}
+                **{k: v for k, v in detail.items() if k not in ('score', 'fit_reason', 'missing_skills','matching_skills', 'link')}
             }
             role_list.append(row)
 
@@ -318,6 +319,7 @@ def write_csv(path: str, data: Dict[str, List[Dict[str, Any]]]) -> None:
                 'score': r.get('score'),
                 'fit_reason': r.get('fit_reason'),
                 'missing_skills': json.dumps(r.get('missing_skills') or []),
+                'matching_skills': json.dumps(r.get('matching_skills') or []), 
                 'link': r.get('link')
             })
 
@@ -325,7 +327,7 @@ def write_csv(path: str, data: Dict[str, List[Dict[str, Any]]]) -> None:
         print('No rows to write to CSV.')
         return
 
-    fieldnames = ['company', 'role_name', 'score', 'fit_reason', 'missing_skills', 'link']
+    fieldnames = ['company', 'role_name', 'score', 'fit_reason', 'missing_skills', 'matching_skills' 'link']
     with open(path, 'w', encoding='utf-8', newline='') as csvf:
         writer = csv.DictWriter(csvf, fieldnames=fieldnames)
         writer.writeheader()
@@ -347,6 +349,7 @@ def data_to_dataframe(data: Dict[str, List[Dict[str, Any]]]) -> 'pd.DataFrame':
                 'score': r.get('score'),
                 'fit_reason': r.get('fit_reason'),
                 'missing_skills': r.get('missing_skills') or [],
+                'matching_skills': r.get('matching_skills') or [],
                 'link': r.get('link')
             }
             # include any other fields present
@@ -746,7 +749,13 @@ def generate_job_report(master_json_path):
     final_cols = [c for c in display_cols if c in df_sorted.columns]
     
     return df_sorted[final_cols]
-
+def start_react():
+    project_dir = os.path.join(os.getcwd(), "my-job-board")
+    print("Starting React application...")
+    try:
+        subprocess.run("npm run dev", shell=True, cwd=project_dir, check=True)
+    except Exception as e:
+        print(f"Failed to start React application: {e}")
 ########################################    
 ### Main                             ###
 ########################################
@@ -758,7 +767,8 @@ def generate_job_report(master_json_path):
 if __name__ == '__main__':
     
     cli()
-    folder_path = 'JobData/ClearanceJobs/llmOut'
+    folder_path = 'JobData/ClearanceJobs/'
     output_filename = "MASTER_ANALYSIS.json"
-    create_master_json_from_folder(folder_path, output_filename)
-    print(generate_job_report(output_filename))
+    create_master_json_from_folder(f"{folder_path}llmOut", f"output_filename")
+    print(generate_job_report(folder_path+output_filename))
+    start_react()

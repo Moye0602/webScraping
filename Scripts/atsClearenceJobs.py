@@ -177,21 +177,32 @@ def match_roles(resume_text, jobs_json):
             job['salary_min'] = salary
             jitter()  # To avoid rate limiting
             print(f"Processing job: {job['role_name']} at {job['company']}")
+            # Analyze the match between this resume and the job. 
             prompt = f"""
-            Resume: {resume_text}
-            ---
-            Job Title: {job['role_name']}
-            full_description: {job['full_description']}
-            "years_exp_required": {job['years_exp_required']}
-            Clearance: {job['clearance']}
-            Salary: {salary} - {job['salary'].get('max_val', 'N/A')}
-            
-            Analyze the match between this resume and the job. 
-            Return ONLY a JSON object with:
-            "score": (0-100),
-            "fit_reason": (1 sentence),
-            "missing_skills": [list]
-            """
+                Resume Content: {resume_text}
+
+                Analyze the match for the following Job:
+                - Title: {job['role_name']}
+                - Required Experience: {job['years_exp_required']} years
+                - Required Clearance: {job['clearance']}
+                - Description: {job['full_description']}
+
+                CRITICAL LOGIC RULES:
+                1. YEARS OF EXPERIENCE: Treat this as a 'minimum threshold.' If the resume shows MORE years (e.g., 10) than the job requires (e.g., 8), it is a PERFECT MATCH. Only penalize if resume < required.
+                2. CLEARANCE MATCHING: 
+                - 'Top Secret/SCI' matches and exceeds 'Top Secret'. 
+                - 'Top Secret' matches and exceeds 'Secret'.
+                - If the resume states an active clearance that meets or exceeds the job requirement, it is a 100% match for that criteria.
+                3. SCORING: Weight the score heavily on Technical Skills, Years of Experience, and Clearance.
+
+                Return ONLY a JSON object:
+                {{
+                "score": (0-100),
+                "fit_reason": "One concise sentence explaining the match based on the rules above.",
+                "missing_skills": ["List only skills/certs explicitly missing from the resume"]
+                "matching_skills":["List only skills/certs explicitly present from the resume"]
+                }}
+                """
             
             try:
                 response = call_model_with_retries(prompt)
@@ -429,6 +440,10 @@ while True:
 # 4. Extract text from the chosen file
 print(f"✅ Selected: {selected_resume}")
 resume_text = extract_text_from_docx(f'./Resumes/{selected_resume}')
+print(f"Scan Settings:{minSalary} salary, {minScore} score minimum")
+# minSalaryMod = int(input(f"Enter minimum salary (default is {minSalary}): ") or f"{minSalary}")
+# minSalary = minSalaryMod
+# print(f"Using minimum salary: {minSalary}")
 input("Press Enter to continue...")
 
 # resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
