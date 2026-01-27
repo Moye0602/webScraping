@@ -8,6 +8,7 @@ import concurrent.futures
 from datetime import datetime
 import  _init__
 from common.helper import cprint 
+import argparse, sys
 def jitter():
     jitterTime = random.uniform(0, 1)  # Random time between 0 to 2 seconds
     print(f"Jittering for {jitterTime:.2f} seconds...",end='\r')
@@ -275,15 +276,46 @@ def scrape_page_worker(page_num, base_url):
     except Exception as e:
         cprint(f"[!] Error on Page {page_num}: {e}",color = 'red')
         return []
+    
+def linkFromUI():
+    # 1. Initialize the Argument Parser
+    parser = argparse.ArgumentParser(description="ClearanceJobs Scraper and Analyzer")
+
+    # 2. Define the inputs the UI is sending
+    # parser.add_argument("--resume_path", type=str, required=True, help="Path to the user's resume")
+    parser.add_argument("--link", type=str, required=True, help="URL of the job posting")
+    # parser.add_argument("--model", type=str, required=True, help="Gemini model ID to use")
+
+    args = parser.parse_args()
+
+    # 3. Use the data in your script
+    print(f"--- Starting Analysis Pipeline ---")
+    print(f"Target URL: {args.link}")
+    return args.link
+    # print(f"Using Model: {args.model}")
+    # print(f"Reading Resume From: {args.resume_path}")
+    print(">>>",parser)
+    # Example of how to use the resume_path
+    # if not os.path.exists(args.resume_path):
+    #     print(f"Error: File not found at {args.resume_path}")
+    #     sys.exit(1)
+
+    # YOUR SCRAPING LOGIC HERE
+    # result = scrape_job(args.link)
+    # analysis = analyze_with_llm(result, args.resume_path, args.model)
+    
+    print("✅ Scrape and Analysis successful.")
 ########################################    
 ### Main                             ###
 ########################################
 if __name__ == "__main__":
-    # Example Usage with your provided snippet:
-    baseURL = input("Enter ClearanceJobs URL (or press Enter for default): ").strip()
-    if not baseURL:
-        input("No URL provided. Using default ClearanceJobs URL. Press Enter to continue...")
-        baseURL = "https://www.clearancejobs.com/jobs?loc=5,9&received=31&ind=nq,nr,pg,nu,nv,nz,pd,nw,nt&limit=50"
+    try:
+        baseURL = linkFromUI()
+    except:
+        baseURL = input("Enter ClearanceJobs URL (or press Enter for default): ").strip()
+        if not baseURL:
+            input("No URL provided. Using default ClearanceJobs URL. Press Enter to continue...")
+            baseURL = "https://www.clearancejobs.com/jobs?loc=5,9&received=31&ind=nq,nr,pg,nu,nv,nz,pd,nw,nt&limit=50"
     
     total_pages = get_total_pages(baseURL)
     all_raw_jobs = []

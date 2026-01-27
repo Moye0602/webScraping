@@ -411,35 +411,39 @@ def create_nested_master_json(data_list, filename=f"llm_data_ClearenceJobs.json"
 
 ####################################################
 # Usage
-import os
 
-# 1. Get list of docx files
-docx_files = [f for f in os.listdir('./Resumes') if f.endswith('.docx')]
+try:
+    1/0
+except:
+    import os
 
-if not docx_files:
-    print("❌ No .docx files found in the current directory.")
-    exit()
+    # 1. Get list of docx files
+    docx_files = [f for f in os.listdir('./Resume_Uploads') if f.endswith('.docx')]
 
-# 2. Display the list to the user
-print("\n--- Available Resumes ---")
-for i, filename in enumerate(docx_files, 1):
-    print(f"{i}. {filename}")
+    if not docx_files:
+        print("❌ No .docx files found in the current directory.")
+        exit()
 
-# 3. Handle selection
-while True:
-    try:
-        choice = int(input(f"\nSelect a resume by number (1-{len(docx_files)}): "))
-        if 1 <= choice <= len(docx_files):
-            selected_resume = docx_files[choice - 1]
-            break
-        else:
-            print(f"Please enter a number between 1 and {len(docx_files)}.")
-    except ValueError:
-        print("Invalid input. Please enter a number.")
+    # 2. Display the list to the user
+    print("\n--- Available Resumes ---")
+    for i, filename in enumerate(docx_files, 1):
+        print(f"{i}. {filename}")
+
+    # 3. Handle selection
+    while True:
+        try:
+            choice = int(input(f"\nSelect a resume by number (1-{len(docx_files)}): "))
+            if 1 <= choice <= len(docx_files):
+                selected_resume = docx_files[choice - 1]
+                break
+            else:
+                print(f"Please enter a number between 1 and {len(docx_files)}.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
 
 # 4. Extract text from the chosen file
 print(f"✅ Selected: {selected_resume}")
-resume_text = extract_text_from_docx(f'./Resumes/{selected_resume}')
+resume_text = extract_text_from_docx(f'./Resume_Uploads/{selected_resume}')
 print(f"Scan Settings:{minSalary} salary, {minScore} score minimum")
 # minSalaryMod = int(input(f"Enter minimum salary (default is {minSalary}): ") or f"{minSalary}")
 # minSalary = minSalaryMod
