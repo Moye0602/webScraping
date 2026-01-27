@@ -1,10 +1,67 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './App.css';
 import jobData from './MASTER_ANALYSIS.json';
 
 function App() {
+  const [jobLink, setJobLink] = useSate("");
+  const [selectModel, setSelectModel] = useState("");
+  const [models, setModels] = useState([]);
   const [search, setSearch] = useState("");
+  const [loading,setLoading] = useState(false);
   const [sortBy, setSortBy] = useState("score"); // Default sort by score
+
+  const triggerScrapper = async() => {
+    setLoading(true);
+    try{
+      const response = await fetch('http://localhost:8000/run-scraper',{
+        method: 'POST',
+      })
+      const data = await response.json();
+      alert(data.message);
+      // Force page reload to show new data?
+      window.location.reload();
+    }catch (error){
+      console.error("Error calling scrapper", error);
+    } finally{
+      setLoading(false);
+    }
+    }
+  
+
+  // fetch Gemini LLM models
+  useEffect(() =>{
+    fetch('http://localhost:8000/get-models')
+    .then(res => res.json())
+    .then(data => {
+      setModels(data.models);
+      setSelectModel(data.models[0]) // set first model as the default
+    })
+    .catch(err => console.error("Error fetching models", err));
+  }, []);
+
+  const handleScan = async () => {
+    if(!jobLink) return alert("Please past a job link first.");
+    setLoading(true);
+    try{
+      const response = await fetch('http://localhost:8000/run-scraper',{
+        method: 'POST',
+        headers: {},
+        body: JSON.stringify({
+          link:jobLink,
+          model: selectModel
+        })
+      })
+      const data = await response.json();
+      alert(data.message);
+      // Force page reload to show new data?
+      window.location.reload();
+    }catch (error){
+      console.error("Error calling scrapper", error);
+    } finally{
+      setLoading(false);
+    }
+  }
+
 
   // 1. Flatten the data
   const allJobs = Object.values(jobData).flat();
@@ -30,6 +87,12 @@ function App() {
     <div className="dashboard">
       <header>
         <h1>Defense Careers Dashboard</h1>
+        {/* { <button onClick = {triggerScrapper}
+          disabled = {loading}
+          className = 'run-btn'
+        >
+          {loading ? "Running Srapper..." : "Refresh Job Data"}
+        </button> */} 
         
         <div className="controls">
           <input 

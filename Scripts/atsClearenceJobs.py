@@ -6,7 +6,7 @@ import google.generativeai as genai
 from playwright.sync_api import sync_playwright
 from tqdm import tqdm
 from docx import Document
-from profileSettings import minSalary, minScore
+from profileSettings import minSalary, minScore, atsBatchSize
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
@@ -454,7 +454,7 @@ print(f"Loaded {len(jobs_json)} jobs from JSON.")
 # Process the jobs in batches filled with qualifying jobs (salary >= minSalary) to improve LLM efficiency
 out_dir = 'JobData/ClearanceJobs/llmIn'
 os.makedirs(out_dir, exist_ok=True)
-chunk_size = 30  # target number of jobs per LLM batch
+chunk_size = atsBatchSize  # target number of jobs per LLM batch
 n = len(jobs_json)
 idx = 0
 batch_num = 1
@@ -474,7 +474,7 @@ print(f"Loaded {total_jobs} jobs from JSON.")
 out_dir = 'JobData/ClearanceJobs/llmIn'
 os.makedirs(out_dir, exist_ok=True)
 
-chunk_size = 30 
+chunk_size = atsBatchSize 
 idx = 0
 batch_num = 1
 qualifying_count = 0

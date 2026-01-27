@@ -696,11 +696,11 @@ def create_master_json_from_folder(folder_path: str, output_filename: str) -> Di
             print(f"Error skipping file {filename}: {e}")
 
     # 3. Save the combined master file
-    dir1 = "JobData/ClearanceJobs/"
+    dir1 = "JobData/ClearanceJobs/MASTER_ANALYSIS.json"
     dir2 = "my-job-board/src/MASTER_ANALYSIS.json"
-    with open(dir1 + output_filename, 'w', encoding='utf-8') as f:
+    with open(dir1, 'w', encoding='utf-8') as f:
         json.dump(master_data, f, indent=4)
-    with open(dir2 + output_filename, 'w', encoding='utf-8') as f:
+    with open(dir2 , 'w', encoding='utf-8') as f:
         json.dump(master_data, f, indent=4)
     print(f"✅ Success! Combined {len(files)} files into {output_filename}")
     return master_data
@@ -770,5 +770,7 @@ if __name__ == '__main__':
     folder_path = 'JobData/ClearanceJobs/'
     output_filename = "MASTER_ANALYSIS.json"
     create_master_json_from_folder(f"{folder_path}llmOut", f"output_filename")
-    print(generate_job_report(folder_path+output_filename))
+    print(folder_path+output_filename)
+    generate_job_report(folder_path+output_filename)
+    print()
     start_react()
