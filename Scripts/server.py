@@ -59,15 +59,52 @@ if not os.path.exists(UPLOAD_FOLDER):
 def run_scraper():
     # Use request.form because React is sending FormData
     # 1. Get the filename from the dropdown selection
-    resume_filename = request.form.get('resume_name')
     job_link = request.form.get('link')
+
+    # Basic Validation
+    if not job_link:
+        return jsonify({"error": "No job link provided"}), 400
+
+    # 2. Build the absolute path to the existing file
+    # We assume the file is already inside your UPLOAD_FOLDER
+
+    # Safety check: Does the file actually exist on the server?
+
+    try:
+        # 3. Run the Subprocess Chain
+        # We pass the existing resume_path to the scraper
+        print(f"🚀 Starting web scraping for Clearance Jobs")
+        
+        subprocess.run([
+            sys.executable, 
+            r"Scripts/wsClearenceJobs.py", 
+            "--link", job_link, 
+
+        ], check=True)
+
+
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"Analysis complete for Clearance Jobs!"
+        })
+
+    except subprocess.CalledProcessError as e:
+        return jsonify({"error": f"Script execution failed: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/run-ats', methods=['POST'])
+def run_ats():
+    # Use request.form because React is sending FormData
+    # 1. Get the filename from the dropdown selection
+    resume_filename = request.form.get('resume_name')
     model_choice = request.form.get('model')
 
     # Basic Validation
     if not resume_filename:
         return jsonify({"error": "No resume selected from the list"}), 400
-    if not job_link:
-        return jsonify({"error": "No job link provided"}), 400
 
     # 2. Build the absolute path to the existing file
     # We assume the file is already inside your UPLOAD_FOLDER
@@ -81,31 +118,25 @@ def run_scraper():
         # 3. Run the Subprocess Chain
         # We pass the existing resume_path to the scraper
         print(f"🚀 Starting analysis: {resume_filename} using {model_choice}")
-        
-        subprocess.run([
-            sys.executable, 
-            r"Scripts/wsClearenceJobs.py", 
-            "--link", job_link, 
-
-        ], check=True)
-
-        # Run subsequent processing scripts
+    # Run subsequent processing scripts
         subprocess.run([sys.executable,
                          r"Scripts/atsClearenceJobs.py",
                         "--resume_path", resume_path,
                         "--model", model_choice],
                           check=True)
-        subprocess.run([sys.executable, r"Scripts/sort_llm_results.py"], check=True)
-        
+        # subprocess.run([sys.executable, r"Scripts/sort_llm_results.py"], check=True)
+       
         return jsonify({
             "status": "success", 
             "message": f"Analysis complete for {resume_filename}!"
         })
+        
 
     except subprocess.CalledProcessError as e:
         return jsonify({"error": f"Script execution failed: {str(e)}"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
 
 @app.route('/get-Models', methods=['GET'])
 def getModels():

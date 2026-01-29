@@ -9,6 +9,7 @@ from datetime import datetime
 import  _init__
 from common.helper import cprint 
 import argparse, sys
+
 def jitter():
     jitterTime = random.uniform(0, 1)  # Random time between 0 to 2 seconds
     print(f"Jittering for {jitterTime:.2f} seconds...",end='\r')

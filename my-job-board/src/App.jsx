@@ -85,15 +85,63 @@ function App() {
     }
 
     setLoading(true);
+    const formData1 = new FormData();
+    const formData2 = new FormData();
+    
+    // These keys MUST match the request.form.get() keys in Python exactly
+    formData2.append('resume_name', selectedResume); 
+    formData1.append('link', jobLink);
+    formData2.append('model', selectModel);
+
+    try {
+      const responseWS = await fetch('http://localhost:8000/run-scraper', {
+        method: 'POST',
+        body: formData1, // Do NOT set Content-Type header; browser does it for FormData
+      });
+      if (!responseWS.ok ) {
+        // Try to get the error message from the backend
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Server Error");
+      }
+
+      const responseATS = await fetch('http://localhost:8000/run-ats', {
+        method: 'POST',
+        body: formData2, // Do NOT set Content-Type header; browser does it for FormData
+      });
+
+      if (!responseATS.ok ) {
+        // Try to get the error message from the backend
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Server Error");
+      }
+
+      const data = await responseATS.json();
+      alert(data.message);
+      window.location.reload(); 
+
+    } catch (err) {
+      alert("Scan failed: " + err.message);
+      console.error("Scan error details:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleATS = async() =>{
+       if (!selectedResume) {
+      alert("Please select a resume and paste a job link.");
+      return;
+    }
+
+    setLoading(true);
     const formData = new FormData();
     
     // These keys MUST match the request.form.get() keys in Python exactly
     formData.append('resume_name', selectedResume); 
-    formData.append('link', jobLink);
     formData.append('model', selectModel);
 
     try {
-      const response = await fetch('http://localhost:8000/run-scraper', {
+      const response = await fetch('http://localhost:8000/run-ats', {
         method: 'POST',
         body: formData, // Do NOT set Content-Type header; browser does it for FormData
       });
@@ -115,6 +163,7 @@ function App() {
       setLoading(false);
     }
   };
+  
 
 
   // 1. Flatten the data
@@ -186,7 +235,7 @@ function App() {
               onChange={(e) => setJobLink(e.target.value)}
             />
             
-            <div className="model-selector">
+            {/* <div className="model-selector">
               <label htmlFor="model-select">Choose AI Model:</label>
               <select 
                 id="model-select"
@@ -199,10 +248,14 @@ function App() {
                   </option>
                 ))}
               </select>
-            </div>
+            </div> */}
 
             <button className="analyze-btn" onClick={handleScan} disabled={loading || !selectedResume}>
-              {loading ? "Analyzing..." : "Analyze Job"}
+              {loading ? "Analyzing..." : "Full Analysis"}
+            </button>
+            <button className='ats-btn' onClick={handleATS} disabled={loading || !selectedResume}>
+              {loading ? "Generating..." : "Analyze Resume"}
+              
             </button>
           </div>
         </div>
@@ -246,6 +299,7 @@ function App() {
               </ul>
             </div>
             <a href={job.link} target="_blank" rel="noreferrer" className="apply-btn">View Listing</a>
+            
           </div>
         ))}
       </main>

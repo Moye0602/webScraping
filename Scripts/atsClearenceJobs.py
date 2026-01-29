@@ -3,11 +3,11 @@ import google.generativeai as genai
 import re,time,random
 import json,os
 import google.generativeai as genai
-from playwright.sync_api import sync_playwright
-from tqdm import tqdm
+# from playwright.sync_api import sync_playwright
+# from tqdm import tqdm
 from docx import Document
 from profileSettings import minSalary, minScore, atsBatchSize
-import sys
+import argparse, sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
@@ -97,8 +97,8 @@ def get_model_selection():
 # # Store models as JSON
 # with open("available_models.json", "w") as f:
 #     json.dump(models_list, f, indent=2)
-print(get_model_selection())
-model = genai.GenerativeModel('models/gemini-flash-lite-latest')
+
+model = genai.GenerativeModel('models/gemini-2.5-flash-lite')
 # model = genai.GenerativeModel('models/gemini-3-flash-preview')
 
 def parse_salary(s):
@@ -132,6 +132,7 @@ def call_model_with_retries(prompt, max_retries=6, initial_backoff=1.0):
     (e.g. 'Please retry in 54.61s' or 'retry_delay { seconds: 54 }') and honor
     that when present. Otherwise it uses exponential backoff.
     """
+    model = genai.GenerativeModel('models/gemini-flash-lite-latest')
     backoff = initial_backoff
     for attempt in range(1, max_retries + 1):
         try:
@@ -255,19 +256,39 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
         List of Jobs to Analyze:
         {json.dumps(job_summaries)}
         ---
-        Task: Analyze the match between the resume and each job provided.
-        Return a JSON list of objects. Each object MUST include the 'id' provided.
         
+        CRITICAL LOGIC RULES:
+            1. YEARS OF EXPERIENCE: Treat this as a 'minimum threshold.' If the resume shows MORE years (e.g., 10) than the job requires (e.g., 8), it is a PERFECT MATCH. Only penalize if resume < required.
+            2. CLEARANCE MATCHING: 
+            - 'Top Secret/SCI' matches and exceeds 'Top Secret'. 
+            - 'Top Secret' matches and exceeds 'Secret'.
+            - If the resume states an active clearance that meets or exceeds the job requirement, it is a 100% match for that criteria.
+            3. SCORING: Weight the score heavily on Technical Skills, Years of Experience, and Clearance.
+
         Output Format:
-        [
-          {{
-            "id": "original_id_here",
-            "score": (0-100),
-            "fit_reason": "one sentence explanation",
-            "missing_skills": ["skill1", "skill2"]
-          }}
-        ]
+            [
+                {{
+                "id": "original_id_here",
+                "score": (0-100),
+                "fit_reason": "One concise sentence explaining the match based on the rules above.",
+                "missing_skills": ["List only skills/certs explicitly missing from the resume"]
+                "matching_skills":["List only skills/certs explicitly present from the resume"]
+                }}
+            ]
         """
+
+        # Task: Analyze the match between the resume and each job provided.
+        # Return a JSON list of objects. Each object MUST include the 'id' provided.
+        
+        # Output Format:
+        # [
+        #   {{
+        #     "id": "original_id_here",
+        #     "score": (0-100),
+        #     "fit_reason": "one sentence explanation",
+        #     "missing_skills": ["skill1", "skill2"]
+        #   }}
+        # ]
 
         try:
             print(f"Processing a batch of {len(batch)} jobs...")
@@ -302,16 +323,6 @@ def generate_review_dashboard(jobs_json):
             f.write(f"* [View Job Posting]({job['link']})\n")
             f.write(f"* [Chat with Gemini about this role](https://gemini.google.com/app?prompt={prompt_text})\n\n")
 
-
-
-
-
-# Load your resume text from a file
-# with open("my_resume.txt", "r", encoding="utf-8") as f:
-#     resume_text = f.read()
-
-
-
 def extract_text_from_docx(file_path):
     try:
         doc = Document(file_path)
@@ -334,43 +345,6 @@ def get_full_description(page, url):
         return desc_element.inner_text() if desc_element.is_visible() else ""
     except:
         return ""
-
-def process_with_llm():
-    with open('job_data_ClearanceJobs.json', 'r') as f:
-        jobs = json.load(f)
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        
-        results = []
-        # Process top 50 matches (to manage time/tokens)
-        for job in tqdm(jobs[:50]): 
-            # 1. Get the Deep Data
-            full_text = get_full_description(page, job['link'])
-            
-            # 2. Construct the Prompt
-            prompt = f"""
-            RESUME:
-            {resume_text}
-            
-            FULL JOB DESCRIPTION:
-            {full_text if full_text else job['full_description']}
-            
-            Compare them. Return JSON: {{"score": 0-100, "reason": "...", "missing": []}}
-            """
-            
-            # 3. Get AI Analysis
-            response = call_model_with_retries(prompt)
-            # (Add JSON parsing logic here)
-            
-            job['ai_match'] = response.text
-            results.append(job)
-            # Small delay to help avoid free-tier rate limits
-            time.sleep(1)
-
-        browser.close()
-    return results
 
 def create_nested_master_json(data_list, filename=f"llm_data_ClearenceJobs.json"):
     master_dict = {}
@@ -408,126 +382,143 @@ def create_nested_master_json(data_list, filename=f"llm_data_ClearenceJobs.json"
     
     return master_dict
 
+def main(selected_resume):
+    import os,json
+    import json
+    # 4. Extract text from the chosen file
+    print(f"✅ Selected: {selected_resume}")
+    resume_text = extract_text_from_docx(f'./Resume_Uploads/{selected_resume}')
+    print(f"Scan Settings:{minSalary} salary, {minScore} score minimum")
+    # minSalaryMod = int(input(f"Enter minimum salary (default is {minSalary}): ") or f"{minSalary}")
+    # minSalary = minSalaryMod
+    # print(f"Using minimum salary: {minSalary}")
+    
 
+    # resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
+    # print("Resume extracted. Length:", resume_text)
+    with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
+        jobs_json = json.load(f)
+    print(f"Loaded {len(jobs_json)} jobs from JSON.")
+    # Process the jobs in batches filled with qualifying jobs (salary >= minSalary) to improve LLM efficiency
+    out_dir = 'JobData/ClearanceJobs/llmIn'
+    os.makedirs(out_dir, exist_ok=True)
+    chunk_size = atsBatchSize  # target number of jobs per LLM batch
+    n = len(jobs_json)
+    idx = 0
+    batch_num = 1
+
+
+    # ... (your previous imports and function defs) ...
+
+    # resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
+    with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
+        jobs_json = json.load(f)
+
+    total_jobs = len(jobs_json)
+    print(f"Loaded {total_jobs} jobs from JSON.")
+
+    out_dir = 'JobData/ClearanceJobs/llmIn'
+    os.makedirs(out_dir, exist_ok=True)
+
+    chunk_size = atsBatchSize 
+    idx = 0
+    batch_num = 1
+    qualifying_count = 0
+
+    while idx < total_jobs:
+        batch = []
+        batch_start = idx
+        
+        # Inner loop to fill the batch
+        while idx < total_jobs and len(batch) < chunk_size:
+            job = jobs_json[idx]
+            salary_val = parse_salary(job.get('salary', {}).get('min_val', 0))
+            
+            if salary_val >= minSalary:
+                batch.append(job)
+                qualifying_count += 1
+            
+            idx += 1
+        
+        if not batch:
+            print("\n[!] No more qualifying jobs found in the remaining data.")
+            break
+
+        # --- PROGRESS CALCULATION ---
+        percent_complete = (idx / total_jobs) * 100
+        # Create a simple visual bar [##########----------]
+        bar_length = 20
+        filled = int(round(bar_length * idx / float(total_jobs)))
+        bar = '█' * filled + '-' * (bar_length - filled)
+
+        print(f"\n{'='*60}")
+        print(f"BATCH {batch_num} | Progress: [{bar}] {percent_complete:.1f}%")
+        print(f"Examining Index: {batch_start} to {idx-1}")
+        print(f"Batch Size: {len(batch)} qualifying roles found so far")
+        print(f"Total Qualified: {qualifying_count} / Total Scanned: {idx}")
+        print(f"{'='*60}")
+
+        try:
+            # Pass the batch to the LLM
+            data_list = match_roles_batched(resume_text, batch, batch_size=len(batch))
+            
+            out_path = os.path.join(out_dir, f"llm_data_ClearenceJobs_{batch_num}.json")
+            create_nested_master_json(data_list, out_path)
+            cprint(f"Successfully saved {out_path}", color="green")
+            
+        except Exception as e:
+            cprint(f"Error processing batch {batch_num}: {e}", color="red")
+            # Partial save logic here...
+
+        batch_num += 1
+
+    print(f"\n✅ Finished. Total scanned: {idx}/{total_jobs}. Total qualified for LLM: {qualifying_count}")
+
+def resumeFromUI():
+    # 1. Initialize the Argument Parser
+    parser = argparse.ArgumentParser(description="ClearanceJobs Scraper and Analyzer")
+
+    # 2. Define the inputs the UI is sending
+    # parser.add_argument("--resume_path", type=str, required=True, help="Path to the user's resume")
+    # parser.add_argument("--link", type=str, required=True, help="URL of the job posting")
+
+    parser.add_argument("--resume_path", type=str, required=True, help="resume used for analysis")
+    parser.add_argument("--model", type=str, required=True, help="LLM model used for analysis")
+    # parser.add_argument("--model", type=str, required=True, help="Gemini model ID to use")
+
+    args = parser.parse_args()
+
+    # 3. Use the data in your script
+    print(f"--- Starting Analysis Pipeline ---")
+    print(f"LLM Model: {args.model}")
+    return args.resume_path
 ####################################################
 # Usage
+main(resumeFromUI())
+# if __name__ == "__main__":
 
-try:
-    1/0
-except:
-    import os
+#     import os
+#     # 1. Get list of docx files
+#     docx_files = [f for f in os.listdir('./Resume_Uploads') if f.endswith('.docx')]
 
-    # 1. Get list of docx files
-    docx_files = [f for f in os.listdir('./Resume_Uploads') if f.endswith('.docx')]
+#     if not docx_files:
+#         print("❌ No .docx files found in the current directory.")
+#         exit()
 
-    if not docx_files:
-        print("❌ No .docx files found in the current directory.")
-        exit()
+#     # 2. Display the list to the user
+#     print("\n--- Available Resumes ---")
+#     for i, filename in enumerate(docx_files, 1):
+#         print(f"{i}. {filename}")
 
-    # 2. Display the list to the user
-    print("\n--- Available Resumes ---")
-    for i, filename in enumerate(docx_files, 1):
-        print(f"{i}. {filename}")
-
-    # 3. Handle selection
-    while True:
-        try:
-            choice = int(input(f"\nSelect a resume by number (1-{len(docx_files)}): "))
-            if 1 <= choice <= len(docx_files):
-                selected_resume = docx_files[choice - 1]
-                break
-            else:
-                print(f"Please enter a number between 1 and {len(docx_files)}.")
-        except ValueError:
-            print("Invalid input. Please enter a number.")
-
-# 4. Extract text from the chosen file
-print(f"✅ Selected: {selected_resume}")
-resume_text = extract_text_from_docx(f'./Resume_Uploads/{selected_resume}')
-print(f"Scan Settings:{minSalary} salary, {minScore} score minimum")
-# minSalaryMod = int(input(f"Enter minimum salary (default is {minSalary}): ") or f"{minSalary}")
-# minSalary = minSalaryMod
-# print(f"Using minimum salary: {minSalary}")
-input("Press Enter to continue...")
-
-# resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
-# print("Resume extracted. Length:", resume_text)
-with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
-    jobs_json = json.load(f)
-print(f"Loaded {len(jobs_json)} jobs from JSON.")
-# Process the jobs in batches filled with qualifying jobs (salary >= minSalary) to improve LLM efficiency
-out_dir = 'JobData/ClearanceJobs/llmIn'
-os.makedirs(out_dir, exist_ok=True)
-chunk_size = atsBatchSize  # target number of jobs per LLM batch
-n = len(jobs_json)
-idx = 0
-batch_num = 1
-import os
-import json
-import math
-
-# ... (your previous imports and function defs) ...
-
-# resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
-with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
-    jobs_json = json.load(f)
-
-total_jobs = len(jobs_json)
-print(f"Loaded {total_jobs} jobs from JSON.")
-
-out_dir = 'JobData/ClearanceJobs/llmIn'
-os.makedirs(out_dir, exist_ok=True)
-
-chunk_size = atsBatchSize 
-idx = 0
-batch_num = 1
-qualifying_count = 0
-
-while idx < total_jobs:
-    batch = []
-    batch_start = idx
-    
-    # Inner loop to fill the batch
-    while idx < total_jobs and len(batch) < chunk_size:
-        job = jobs_json[idx]
-        salary_val = parse_salary(job.get('salary', {}).get('min_val', 0))
-        
-        if salary_val >= minSalary:
-            batch.append(job)
-            qualifying_count += 1
-        
-        idx += 1
-    
-    if not batch:
-        print("\n[!] No more qualifying jobs found in the remaining data.")
-        break
-
-    # --- PROGRESS CALCULATION ---
-    percent_complete = (idx / total_jobs) * 100
-    # Create a simple visual bar [##########----------]
-    bar_length = 20
-    filled = int(round(bar_length * idx / float(total_jobs)))
-    bar = '█' * filled + '-' * (bar_length - filled)
-
-    print(f"\n{'='*60}")
-    print(f"BATCH {batch_num} | Progress: [{bar}] {percent_complete:.1f}%")
-    print(f"Examining Index: {batch_start} to {idx-1}")
-    print(f"Batch Size: {len(batch)} qualifying roles found so far")
-    print(f"Total Qualified: {qualifying_count} / Total Scanned: {idx}")
-    print(f"{'='*60}")
-
-    try:
-        # Pass the batch to the LLM
-        data_list = match_roles_batched(resume_text, batch, batch_size=len(batch))
-        
-        out_path = os.path.join(out_dir, f"llm_data_ClearenceJobs_{batch_num}.json")
-        create_nested_master_json(data_list, out_path)
-        cprint(f"Successfully saved {out_path}", color="green")
-        
-    except Exception as e:
-        cprint(f"Error processing batch {batch_num}: {e}", color="red")
-        # Partial save logic here...
-
-    batch_num += 1
-
-print(f"\n✅ Finished. Total scanned: {idx}/{total_jobs}. Total qualified for LLM: {qualifying_count}")
+#     # 3. Handle selection
+#     while True:
+#         try:
+#             choice = int(input(f"\nSelect a resume by number (1-{len(docx_files)}): "))
+#             if 1 <= choice <= len(docx_files):
+#                 selected_resume = docx_files[choice - 1]
+#                 break
+#             else:
+#                 print(f"Please enter a number between 1 and {len(docx_files)}.")
+#         except ValueError:
+#             print("Invalid input. Please enter a number.")
+#     main(selected_resume)
