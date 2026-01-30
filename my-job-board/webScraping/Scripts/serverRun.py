@@ -7,7 +7,9 @@ def launch():
     # 1. Start the Flask Backend
     print("🚀 Starting Python Backend (Flask)...")
     # Use 'sys.executable' to ensure it uses the same python that runs this script
-    backend = subprocess.Popen([sys.executable, r"Scripts\server.py"])
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    server_path = os.path.join(current_dir, "server.py")
+    backend = subprocess.Popen([sys.executable, server_path], cwd=current_dir)
 
     # 2. Wait a moment for the backend to initialize
     time.sleep(2)

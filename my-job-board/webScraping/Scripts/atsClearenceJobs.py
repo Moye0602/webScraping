@@ -1,12 +1,11 @@
 from pprint import pprint
-import google.generativeai as genai
 import re,time,random
 import json,os
 import google.generativeai as genai
 # from playwright.sync_api import sync_playwright
 # from tqdm import tqdm
 from docx import Document
-from profileSettings import minSalary, minScore, atsBatchSize
+from profileSettings import minSalary, minScore, atsBatchSize,llmModel
 import argparse, sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
@@ -98,7 +97,7 @@ def get_model_selection():
 # with open("available_models.json", "w") as f:
 #     json.dump(models_list, f, indent=2)
 
-model = genai.GenerativeModel('models/gemini-2.5-flash-lite')
+model = genai.GenerativeModel(llmModel)
 # model = genai.GenerativeModel('models/gemini-3-flash-preview')
 
 def parse_salary(s):
@@ -227,7 +226,7 @@ def chunk_list(data, chunk_size):
     for i in range(0, len(data), chunk_size):
         yield data[i:i + chunk_size]
 
-def match_roles_batched(resume_text, jobs_json, batch_size=25):
+# def match_roles_batched(resume_text, jobs_json, batch_size=25):
     results = []
     
     # 1. Pre-filter by salary to save tokens/money
@@ -305,6 +304,110 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
                 if original_job:
                     original_job.update(match_item)
                     results.append(original_job)
+
+            time.sleep(2) # Respect free tier rate limits
+        except Exception as e:
+            print(f"Error processing batch: {e}")
+            
+    return results
+
+def match_roles_batched(resume_text, jobs_json, batch_size=25):
+    results = []
+    
+    # --- NEW: Load the Tracking Data ---
+    # Path assumes server.py and this script can both see the same applied_jobs.json
+    tracker_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'applied_jobs.json'))
+    applied_ids = []
+    if os.path.exists(tracker_path):
+        with open(tracker_path, 'r') as f:
+            applied_ids = json.load(f)
+
+    # 1. Pre-filter by Salary AND Applied Status
+    for j in jobs_json:
+        j['salary']['min_val'] = parse_salary(j['salary'].get('min_val', 0))
+    
+    # The "Wild" Filter: Must meet salary AND must NOT be in applied_ids
+    filtered_jobs = [
+        j for j in jobs_json 
+        if j['salary'].get('min_val', 0) >= minSalary 
+        and j.get('jobId') not in applied_ids  # Skip what we've already done
+    ]
+    
+    print(f"Total jobs: {len(jobs_json)} | Filtered (Salary/Applied) down to: {len(filtered_jobs)}.")
+
+    # 2. Proceed with Chunking (unchanged, but now much faster)
+    for batch in chunk_list(filtered_jobs, batch_size):
+        # Create a simplified version of the jobs for the prompt to save tokens
+        job_summaries = []
+        for j in batch:
+            job_summaries.append({
+                "id": j.get('link'), # Use link or UUID as a key
+                "title": j.get('role_name'),
+                "description": j.get('full_description'),
+                "exp": j.get('years_exp_required'),
+                "clearance": j.get('clearance')
+            })
+
+        prompt = f"""
+        Resume: {resume_text}
+        ---
+        List of Jobs to Analyze:
+        {json.dumps(job_summaries)}
+        ---
+        
+        CRITICAL LOGIC RULES:
+            1. YEARS OF EXPERIENCE: Treat this as a 'minimum threshold.' If the resume shows MORE years (e.g., 10) than the job requires (e.g., 8), it is a PERFECT MATCH. Only penalize if resume < required.
+            2. CLEARANCE MATCHING: 
+            - 'Top Secret/SCI' matches and exceeds 'Top Secret'. 
+            - 'Top Secret' matches and exceeds 'Secret'.
+            - If the resume states an active clearance that meets or exceeds the job requirement, it is a 100% match for that criteria.
+            3. SCORING: Weight the score heavily on Technical Skills, Years of Experience, and Clearance.
+
+        Output Format:
+            [
+                {{
+                "id": "original_id_here",
+                "score": (0-100),
+                "fit_reason": "One concise sentence explaining the match based on the rules above.",
+                "missing_skills": ["List only skills/certs explicitly missing from the resume"]
+                "matching_skills":["List only skills/certs explicitly present from the resume"]
+                }}
+            ]
+        """
+
+        # Task: Analyze the match between the resume and each job provided.
+        # Return a JSON list of objects. Each object MUST include the 'id' provided.
+        
+        # Output Format:
+        # [
+        #   {{
+        #     "id": "original_id_here",
+        #     "score": (0-100),
+        #     "fit_reason": "one sentence explanation",
+        #     "missing_skills": ["skill1", "skill2"]
+        #   }}
+        # ]
+
+        try:
+            print(f"Processing a batch of {len(batch)} jobs...")
+            response = call_model_with_retries(prompt)
+            
+            # Use regex or json.loads to clean the response
+            raw_text = response.text.replace('```json', '').replace('```', '').strip()
+            batch_results = json.loads(raw_text)
+
+            # Map results back to original data
+            for match_item in batch_results:
+                original_job = next((item for item in batch if item['link'] == match_item['id']), None)
+                if original_job:
+                    original_job.update(match_item)
+                    results.append(original_job)
+
+                    # --- THE TAILORING TRIGGER ---
+                    if original_job['score'] >= minScore:
+                        print(f"🔥 High Match Found ({original_job['score']}%). Triggering Tailor script...")
+                        # Here you would call your tailoring function
+                        # generate_tailored_resume(resume_text, original_job
 
             time.sleep(2) # Respect free tier rate limits
         except Exception as e:

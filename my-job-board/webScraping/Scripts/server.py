@@ -6,6 +6,7 @@ import time
 import google.generativeai as genai
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from docx import Document
 
 # --- PATH LOGIC ---
 # Ensures the script knows where it is relative to the folders
@@ -30,15 +31,26 @@ CORS(app)
 @app.route('/api/get-resumes', methods=['GET'])
 def get_resumes():
     try:
-        # We need to go UP two levels from 'Scripts' to find 'Resume_Uploads_'
-        # Scripts -> webScraping -> Resume_Uploads_
-        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        upload_folder = os.path.join(base_path, 'Resume_Uploads_')
+        # 1. Get the absolute path of the directory server.py is in (Scripts)
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        print(current_script_dir)
+        # 2. Go UP one level to 'webScraping'
+        web_scraping_dir = os.path.dirname(current_script_dir)
+        print(web_scraping_dir)
+        # 3. Target the Resume folder
+        upload_folder = os.path.join(web_scraping_dir, 'Resume_Uploads')
+        print(upload_folder)
         
+        print(f"DEBUG: Looking for resumes in: {upload_folder}")
+
+        if not os.path.exists(upload_folder):
+            return jsonify({"error": f"Directory not found: {upload_folder}"}), 404
+
         files = os.listdir(upload_folder)
         resumes = [f for f in files if f.endswith(('.pdf', '.docx', '.txt'))]
         return jsonify({"resumes": resumes})
     except Exception as e:
+        print(f"ERROR: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/run-scraper', methods=['POST'])
@@ -131,6 +143,51 @@ def mark_applied():
             json.dump(applied_ids, f, indent=4)
     
     return jsonify({"status": "success", "applied": applied_ids})
+
+@app.route('/api/tailor-resume', methods=['POST'])
+def handle_tailoring():
+    import resumeWriter
+    data = request.json
+    job_id = data.get('jobId')
+    resume_name = data.get('resume_name')
+    def extract_text_from_docx(file_path):
+        try:
+            doc = Document(file_path)
+            full_text = []
+            for para in doc.paragraphs:
+                full_text.append(para.text)
+            return "\n".join(full_text)
+        except Exception as e:
+            print(f"Error reading Word doc: {e}")
+            return ""
+
+    try:
+        # 1. Locate Master Analysis (Moving up from Scripts to src)
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        analysis_path = os.path.join(base_dir, 'MASTER_ANALYSIS.json')
+        
+        with open(analysis_path, 'r') as f:
+            all_jobs = json.load(f)
+        
+        # 2. Extract the specific job data
+        target_job = next((j for j in all_jobs if j.get('jobId') == job_id), None)
+        if not target_job:
+            return jsonify({"error": "Job details not found for tailoring."}), 404
+
+        # 3. Read Master Resume Text (Assumes you have a helper to get text)
+        resume_path = os.path.join(base_dir, 'Resume_Uploads_', resume_name)
+        master_text = extract_text_from_docx(resume_path) # You'll need a PDF/Docx parser here
+
+        # 4. Invoke the Tailor Logic
+        tailored_content = resumeWriter.invoke_gemini_tailor(master_text, target_job)
+        
+        return jsonify({
+            "status": "success",
+            "data": tailored_content
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 ##########################################
 if __name__ == "__main__":
