@@ -15,7 +15,7 @@ function App() {
   const triggerScrapper = async() => {
     setLoading(true);
     try{
-      const response = await fetch('http://localhost:8000/run-scraper',{
+      const response = await fetch('http://localhost:8000/api/run-scraper',{
         method: 'POST',
       })
       const data = await response.json();
@@ -31,7 +31,7 @@ function App() {
   
   // fetch resumes on load
   const fetchResumes = () => {
-    fetch('http://localhost:8000/get-resumes')
+    fetch('http://localhost:8000/api/get-resumes')
       .then(res => res.json())
       .then(data => {
         setResumes(data.resumes);
@@ -49,7 +49,7 @@ function App() {
     const formData = new FormData();
     formData.append('resume', file);
 
-    const res = await fetch('http://localhost:8000/upload-resume', {
+    const res = await fetch('http://localhost:8000/api/upload-resume', {
       method: 'POST',
       body: formData
     });
@@ -62,7 +62,7 @@ function App() {
 
   // fetch Gemini LLM models
   useEffect(() => {
-    fetch('http://localhost:8000/get-Models')
+    fetch('http://localhost:8000/api/get-models')
       .then(res => {
         if (!res.ok) throw new Error("Network response was not ok");
         return res.json();
@@ -94,7 +94,7 @@ function App() {
     formData2.append('model', selectModel);
 
     try {
-      const responseWS = await fetch('http://localhost:8000/run-scraper', {
+      const responseWS = await fetch('http://localhost:8000/api/run-scraper', {
         method: 'POST',
         body: formData1, // Do NOT set Content-Type header; browser does it for FormData
       });
@@ -104,7 +104,7 @@ function App() {
         throw new Error(errorData.error || "Server Error");
       }
 
-      const responseATS = await fetch('http://localhost:8000/run-ats', {
+      const responseATS = await fetch('http://localhost:8000/api/run-ats', {
         method: 'POST',
         body: formData2, // Do NOT set Content-Type header; browser does it for FormData
       });
@@ -141,7 +141,7 @@ function App() {
     formData.append('model', selectModel);
 
     try {
-      const response = await fetch('http://localhost:8000/run-ats', {
+      const response = await fetch('http://localhost:8000/api/run-ats', {
         method: 'POST',
         body: formData, // Do NOT set Content-Type header; browser does it for FormData
       });
@@ -299,7 +299,6 @@ function App() {
               </ul>
             </div>
             <a href={job.link} target="_blank" rel="noreferrer" className="apply-btn">View Listing</a>
-            
           </div>
         ))}
       </main>

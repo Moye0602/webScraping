@@ -6,7 +6,7 @@ import requests
 import time,random
 import concurrent.futures
 from datetime import datetime
-import  _init__
+from  _init__ import *
 from common.helper import cprint 
 import argparse, sys
 
@@ -232,6 +232,7 @@ def finalize_to_json(data_list, directory= "ClearanceJobs/JobData/", filename="j
         # CLEANUP: Extracting the real date if it was stuck in the clearance field
         date_val = "Posted today" if "today" in raw_clearance else entry.get('date_posted')
         clean_entry = {
+            "job_id":generate_job_id(entry['role_name'],entry['company']),
             "role_name": entry['role_name'],
             "company": entry['company'],
             "link": entry['link'],

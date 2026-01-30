@@ -20,41 +20,6 @@ UPLOAD_FOLDER = 'Resume_Uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# @app.route('/run-scraper-', methods=['POST'])
-# def run_scraper_():
-#     # 1. Handle the File
-#     if 'resume' not in request.files:
-#         return jsonify({"error": "No resume file uploaded"}), 400
-    
-#     file = request.files['resume']
-#     if file.filename == '':
-#         return jsonify({"error": "No selected file"}), 400
-
-#     # Save the file to the backend
-#     resume_path = os.path.join(UPLOAD_FOLDER, file.filename)
-#     file.save(resume_path)
-
-#     # 2. Handle the Text Data
-#     # When using FormData, text fields are in request.form, not request.json
-#     job_link = request.form.get('link')
-#     model_choice = request.form.get('model')
-
-#     try:
-#         # Pass the PATH of the saved resume to your scraper script
-#         subprocess.run([
-#             sys.executable, 
-#             r"Scripts/wsClearenceJobs.py", 
-#             "--resume_path", resume_path,
-#             "--link", job_link, 
-#             "--model", model_choice
-#         ], check=True)
-#         subprocess.run(["python", r"Scripts/atsClearenceJobs.py"], check=True)
-#         subprocess.run(["python", r"Scripts/sort_llm_results.py"], check=True)
-        
-#         return jsonify({"status": "success", "message": "Resume uploaded and analyzed!"})
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
-
 @app.route('/run-scraper', methods=['POST'])
 def run_scraper():
     # Use request.form because React is sending FormData
@@ -183,7 +148,7 @@ import os
 from flask import Flask, request, jsonify
 # ... your other imports
 
-@app.route('/get-resumes', methods=['GET'])
+@app.route('.webScraping/Scripts/get-resumes', methods=['GET'])
 def get_resumes():
     try:
         # List all files in the Resume_Uploads directory

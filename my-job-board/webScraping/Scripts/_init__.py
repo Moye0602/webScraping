@@ -4,6 +4,7 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 from common.helper import cprint
+import hashlib
 
 ClearanceJobsdirectory = ""
 subdirectories = [ "llmOut", "llmIn"]
@@ -25,3 +26,8 @@ for directory in directories:
 if not os.path.exists("Resumes/"):
     os.makedirs("Resumes/", exist_ok=True)  
     cprint(f"Created directory: Resumes/", color = "green")
+
+def generate_job_id(role_name, company):
+    """Creates a deterministic unique ID for a job based on title and company."""
+    raw_id = f"{role_name.lower().strip()}-{company.lower().strip()}"
+    return hashlib.md5(raw_id.encode()).hexdigest()
