@@ -117,19 +117,20 @@ def get_models():
 
 
 
-def get_applied_ids():
-    """Reads the list of applied job IDs from the JSON tracker."""
-    if not os.path.exists(APPLIED_TRACKER_PATH):
-        return []
-    try:
-        with open(APPLIED_TRACKER_PATH, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return []
+
 
 @app.route('/api/mark-applied', methods=['POST'])
 def mark_applied():
     """Endpoint for React to signal that a job has been applied to."""
+    def get_applied_ids():
+        """Reads the list of applied job IDs from the JSON tracker."""
+        if not os.path.exists(APPLIED_TRACKER_PATH):
+            return []
+        try:
+            with open(APPLIED_TRACKER_PATH, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return []
     data = request.json
     job_id = data.get('jobId')
     
@@ -148,6 +149,7 @@ def mark_applied():
 def handle_tailoring():
     import resumeWriter
     data = request.json
+    print(data)
     job_id = data.get('jobId')
     resume_name = data.get('resume_name')
     def extract_text_from_docx(file_path):
@@ -164,8 +166,7 @@ def handle_tailoring():
     try:
         # 1. Locate Master Analysis (Moving up from Scripts to src)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        analysis_path = os.path.join(base_dir, 'MASTER_ANALYSIS.json')
-        
+        analysis_path = os.path.join(f'{base_dir}\JobData\ClearanceJobs', 'MASTER_ANALYSIS.json')
         with open(analysis_path, 'r') as f:
             all_jobs = json.load(f)
         

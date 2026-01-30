@@ -8,26 +8,27 @@ function App() {
   const [models, setModels] = useState([]); // LLM models
   const [search, setSearch] = useState(""); // search filter of the jobs returned
   const [loading,setLoading] = useState(false); // loading boolean to deactivate buttons during processing
+  const [isTailoring,setTailoring] = useState(false);
   const [sortBy, setSortBy] = useState("score"); // Default sort by score
   const [resumes, setResumes] = useState([]); // resumes stored locally through UI
   const [selectedResume, setSelectedResume] = useState(""); // resume chosen by user
 
-  const triggerScrapper = async() => {
-    setLoading(true);
-    try{
-      const response = await fetch('http://localhost:8000/api/run-scraper',{
-        method: 'POST',
-      })
-      const data = await response.json();
-      alert(data.message);
-      // Force page reload to show new data?
-      window.location.reload();
-    }catch (error){
-      console.error("Error calling scrapper", error);
-    } finally{
-      setLoading(false);
-    }
-    }
+  // const triggerScrapper = async() => {
+  //   setLoading(true);
+  //   try{
+  //     const response = await fetch('http://localhost:8000/api/run-scraper',{
+  //       method: 'POST',
+  //     })
+  //     const data = await response.json();
+  //     alert(data.message);
+  //     // Force page reload to show new data?
+  //     window.location.reload();
+  //   }catch (error){
+  //     console.error("Error calling scrapper", error);
+  //   } finally{
+  //     setLoading(false);
+  //   }
+  //   }
   
   // fetch resumes on load
   const fetchResumes = () => {
@@ -164,7 +165,22 @@ function App() {
     }
   };
   
-
+  const handleTailorRequest = async (jobId) => {
+    setTailoring(true)
+    const response = await fetch('http://localhost:8000/api/tailor-resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobId: jobId,
+        resume_name: selectedResume,
+        model: selectModel
+      })
+    });
+      const tailoredData = await response.json();
+    // Display this in a modal or a designated "Tailored Content" area
+    console.log("Tailored Result:", tailoredData);
+    setTailoring(false)
+  };
 
   // 1. Flatten the data
   const allJobs = Object.values(jobData).flat();
@@ -298,8 +314,22 @@ function App() {
                 {job.missing_skills.map((skill, i) => <li key={i}>{skill}</li>)}
               </ul>
             </div>
-            <a href={job.link} target="_blank" rel="noreferrer" className="apply-btn">View Listing</a>
-          </div>
+              <div className ="job-actions">
+                <a href={job.link} target="_blank" rel="noreferrer" className="apply-btn">
+                  View Listing
+                </a>
+                <button              
+                onClick={() => handleTailorRequest(job)}
+                className="tailor-btn"
+                disabled={isTailoring} // to prevent double click or invocation on same job
+                >
+                  {isTailoring ? "✨ Tailoring..." : "✨ Tailor Resume"}
+                </button>
+
+
+              </div>
+            </div>
+
         ))}
       </main>
     </div>

@@ -1,4 +1,4 @@
-import json, os
+import json, os, re
 from pprint import pprint
 from bs4 import BeautifulSoup
 from icecream import ic
@@ -9,6 +9,8 @@ from datetime import datetime
 from  _init__ import *
 from common.helper import cprint 
 import argparse, sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
 
 def jitter():
     jitterTime = random.uniform(0, 1)  # Random time between 0 to 2 seconds
@@ -88,7 +90,7 @@ def scrape_full_description(page, url):
         cprint(f"  [!] Failed to deep-scrape {url}: {e}", color = 'red')
         return "Full description not found."
 
-import re
+
 
 def extract_salary(text):
     """Parse salary from text and return integer min/max in dollars.
@@ -189,6 +191,7 @@ def process_scraped_data(job_cards, seen_links: set = None):
 
             # Build the JSON object and record link as seen
             extracted_data.append({
+                "job_id":generate_job_id(role_name,company),
                 "role_name": role_name,
                 "company": company,
                 "link": role_link,
@@ -218,7 +221,7 @@ def process_scraped_data(job_cards, seen_links: set = None):
 
     return extracted_data, seen_links
     
-def finalize_to_json(data_list, directory= "ClearanceJobs/JobData/", filename="jobs_data.json"):
+def finalize_to_json(data_list, directory= "JobData/ClearanceJobs", filename="jobs_data.json"):
     os.makedirs(directory, exist_ok=True)
     cleaned_data = []
     
@@ -317,9 +320,9 @@ if __name__ == "__main__":
         baseURL = input("Enter ClearanceJobs URL (or press Enter for default): ").strip()
         if not baseURL:
             input("No URL provided. Using default ClearanceJobs URL. Press Enter to continue...")
-            baseURL = "https://www.clearancejobs.com/jobs?loc=5,9&received=31&ind=nq,nr,pg,nu,nv,nz,pd,nw,nt&limit=50"
+            baseURL = "https://www.clearancejobs.com/jobs?loc=5,9&received=31&ind=nq,nr,pg,nu,nv,nz,pd,nw,nt&limit=10"
     
-    total_pages = get_total_pages(baseURL)
+    total_pages = 1#get_total_pages(baseURL)
     all_raw_jobs = []
         
     # --- Multi-threaded Execution ---
@@ -349,7 +352,8 @@ if __name__ == "__main__":
             seen_links.add(link)
 
     # Finalize to JSON
-    finalize_to_json(unique_jobs, directory= "JobData/ClearanceJobs/", filename="jobs_data.json")
+    print(f"{parent_dir}/JobData/ClearanceJobs/")
+    finalize_to_json(unique_jobs, directory= f"{parent_dir}/JobData/ClearanceJobs/", filename="jobs_data.json")
     
     print("--------------------------------------------------------")
     print(f"✅ Scraping complete. Data saved to jobs_data.json")
