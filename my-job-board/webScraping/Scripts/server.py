@@ -33,13 +33,10 @@ def get_resumes():
     try:
         # 1. Get the absolute path of the directory server.py is in (Scripts)
         current_script_dir = os.path.dirname(os.path.abspath(__file__))
-        print(current_script_dir)
         # 2. Go UP one level to 'webScraping'
         web_scraping_dir = os.path.dirname(current_script_dir)
-        print(web_scraping_dir)
         # 3. Target the Resume folder
         upload_folder = os.path.join(web_scraping_dir, 'Resume_Uploads')
-        print(upload_folder)
         
         print(f"DEBUG: Looking for resumes in: {upload_folder}")
 
@@ -61,8 +58,9 @@ def run_scraper():
 
     try:
         # Construct the path to the script dynamically
-        script_path = os.path.join(BASE_DIR, "Scripts", "wsClearenceJobs.py")
         
+        script_path = os.path.join(BASE_DIR, "wsClearenceJobs.py")
+        print(script_path)
         print(f"🚀 Starting scraper for: {job_link}")
         subprocess.run([
             sys.executable, 
@@ -85,7 +83,7 @@ def run_ats():
     resume_path = os.path.join(UPLOAD_FOLDER, resume_filename)
 
     try:
-        script_path = os.path.join(BASE_DIR, "Scripts", "atsClearenceJobs.py")
+        script_path = os.path.join(BASE_DIR, "atsClearenceJobs.py")
         
         subprocess.run([
             sys.executable,
@@ -166,7 +164,7 @@ def handle_tailoring():
     try:
         # 1. Locate Master Analysis (Moving up from Scripts to src)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        analysis_path = os.path.join(f'{base_dir}\JobData\ClearanceJobs', 'MASTER_ANALYSIS.json')
+        analysis_path = os.path.join(f'{base_dir}\\JobData\\ClearanceJobs', 'MASTER_ANALYSIS.json')
         with open(analysis_path, 'r') as f:
             all_jobs = json.load(f)
         

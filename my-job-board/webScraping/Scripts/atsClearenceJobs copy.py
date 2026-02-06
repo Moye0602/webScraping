@@ -124,7 +124,7 @@ def parse_salary(s):
     except Exception:
         return 0
 
-def call_model_with_retries(prompt, max_retries=2, initial_backoff=1.0):
+def call_model_with_retries(prompt, max_retries=6, initial_backoff=1.0):
     """Call the LLM and handle rate-limit (429) errors with retry delays.
 
     The function will inspect exception messages for a suggested retry delay
@@ -145,12 +145,9 @@ def call_model_with_retries(prompt, max_retries=2, initial_backoff=1.0):
 
             if m:
                 # Use the provided delay (add a small buffer)
-                try:
-                    delay = float(m.group(1)) + 1.0
-                    print(f"Rate limit hit. Waiting {delay:.1f}s before retry (attempt {attempt}/{max_retries})")
-                    time.sleep(delay)
-                except KeyboardInterrupt:
-                    pass
+                delay = float(m.group(1)) + 1.0
+                print(f"Rate limit hit. Waiting {delay:.1f}s before retry (attempt {attempt}/{max_retries})")
+                time.sleep(delay)
             else:
                 # Fallback exponential backoff
                 if attempt == max_retries:
@@ -207,7 +204,8 @@ def match_roles(resume_text, jobs_json):
                 }}
                 """
             
-            try:
+            # try:
+            if 1:
                 response = call_model_with_retries(prompt)
                 # Clean and parse the LLM's JSON response
                 match_data = json.loads(response.text.replace('```json', '').replace('```', ''))
@@ -218,7 +216,7 @@ def match_roles(resume_text, jobs_json):
                 
                 # Rate limiting for free tier
                 time.sleep(1) 
-            except Exception as e:
+            # except Exception as e:
                 print(f"Error processing {job['role_name']}: {e}")
     except KeyboardInterrupt:
         pass
@@ -229,7 +227,7 @@ def chunk_list(data, chunk_size):
     for i in range(0, len(data), chunk_size):
         yield data[i:i + chunk_size]
 
-def match_roles_batched(resume_text, jobs_json, batch_size=25):
+# def match_roles_batched(resume_text, jobs_json, batch_size=25):
     results = []
     
     # 1. Pre-filter by salary to save tokens/money
@@ -309,7 +307,7 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
                     results.append(original_job)
 
             time.sleep(2) # Respect free tier rate limits
-        except ConnectionError as e:
+        except Exception as e:
             print(f"Error processing batch: {e}")
             
     return results
@@ -413,7 +411,7 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
                         # generate_tailored_resume(resume_text, original_job
 
             time.sleep(2) # Respect free tier rate limits
-        except ConnectionError as e:
+        except Exception as e:
             print(f"Error processing batch: {e}")
             
     return results
@@ -488,40 +486,12 @@ def create_nested_master_json(data_list, filename=f"llm_data_ClearenceJobs.json"
     
     return master_dict
 
-def update_grand_master(grand_master, batch_data):
-    """
-    Merges batch_data into grand_master using the 
-    {Company: {Role: {Details}}} structure.
-    """
-    for item in batch_data:
-        company = item.get('company', 'Unknown Company')
-        role = item.get('role_name', 'Unknown Role')
-
-        if company not in grand_master:
-            grand_master[company] = {}
-
-        # Map the item to the specific nested structure
-        grand_master[company][role] = {
-            "score": item.get('score'),
-            "fit_reason": item.get('fit_reason'),
-            "missing_skills": item.get('missing_skills', []),
-            "location": item.get('location', 'N/A'),
-            "link": item.get('link', '#'),
-            "date_posted": item.get('date_posted', 'Unknown'),
-            "clearance": item.get('clearance', 'Not Specified'),
-            "polygraph": item.get('polygraph', 'Not Specified'),
-            "full_description": item.get('full_description', '')
-        }
-    return grand_master
-
-
-
 def main(selected_resume):
     import os,json
     import json
     # 4. Extract text from the chosen file
     print(f"✅ Selected: {selected_resume}")
-    resume_text = extract_text_from_docx(f'{selected_resume}')
+    resume_text = extract_text_from_docx(f'./Resume_Uploads/{selected_resume}')
     print(f"Scan Settings:{minSalary} salary, {minScore} score minimum")
     # minSalaryMod = int(input(f"Enter minimum salary (default is {minSalary}): ") or f"{minSalary}")
     # minSalary = minSalaryMod
@@ -530,8 +500,7 @@ def main(selected_resume):
 
     # resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
     # print("Resume extracted. Length:", resume_text)
-    with open('C:\\Users\\kmoye\\3D Objects\\Dev_Mode\\webScraping\\JobData\\ClearanceJobs\\jobs_data.json', 'r') as f:
-        
+    with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
         jobs_json = json.load(f)
     print(f"Loaded {len(jobs_json)} jobs from JSON.")
     # Process the jobs in batches filled with qualifying jobs (salary >= minSalary) to improve LLM efficiency
@@ -546,19 +515,20 @@ def main(selected_resume):
     # ... (your previous imports and function defs) ...
 
     # resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
-    # with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
-    #     jobs_json = json.load(f)
+    with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
+        jobs_json = json.load(f)
 
     total_jobs = len(jobs_json)
     print(f"Loaded {total_jobs} jobs from JSON.")
 
     out_dir = 'JobData/ClearanceJobs/llmIn'
     os.makedirs(out_dir, exist_ok=True)
-    grand_master_dict = {}
+
     chunk_size = atsBatchSize 
     idx = 0
     batch_num = 1
     qualifying_count = 0
+
     while idx < total_jobs:
         batch = []
         batch_start = idx
@@ -595,22 +565,17 @@ def main(selected_resume):
         try:
             # Pass the batch to the LLM
             data_list = match_roles_batched(resume_text, batch, batch_size=len(batch))
-            grand_master_dict = update_grand_master(grand_master_dict, data_list)
-
+            
             out_path = os.path.join(out_dir, f"llm_data_ClearenceJobs_{batch_num}.json")
             create_nested_master_json(data_list, out_path)
             cprint(f"Successfully saved {out_path}", color="green")
             
-        except ConnectionError as e:
+        except Exception as e:
             cprint(f"Error processing batch {batch_num}: {e}", color="red")
-            break
             # Partial save logic here...
 
         batch_num += 1
-    print(out_dir)
-    final_output_path = os.path.join(out_dir, "MASTER_ANALYSIS.json")
-    with open(final_output_path, 'w', encoding='utf-8') as f:
-        json.dump(grand_master_dict, f, indent=4)
+
     print(f"\n✅ Finished. Total scanned: {idx}/{total_jobs}. Total qualified for LLM: {qualifying_count}")
 
 def resumeFromUI():

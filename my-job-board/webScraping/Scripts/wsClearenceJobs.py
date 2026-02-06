@@ -320,9 +320,9 @@ if __name__ == "__main__":
         baseURL = input("Enter ClearanceJobs URL (or press Enter for default): ").strip()
         if not baseURL:
             input("No URL provided. Using default ClearanceJobs URL. Press Enter to continue...")
-            baseURL = "https://www.clearancejobs.com/jobs?loc=5,9&received=31&ind=nq,nr,pg,nu,nv,nz,pd,nw,nt&limit=10"
+            baseURL = "https://www.clearancejobs.com/jobs?loc=5,9,48&received=93&ind=nq,nr,pg,nu,nv,nz&type=e&limit=50"
     
-    total_pages = 1#get_total_pages(baseURL)
+    total_pages = get_total_pages(baseURL)
     all_raw_jobs = []
         
     # --- Multi-threaded Execution ---
@@ -352,8 +352,8 @@ if __name__ == "__main__":
             seen_links.add(link)
 
     # Finalize to JSON
-    print(f"{parent_dir}/JobData/ClearanceJobs/")
-    finalize_to_json(unique_jobs, directory= f"{parent_dir}/JobData/ClearanceJobs/", filename="jobs_data.json")
+    print(f"{parent_dir}\\JobData\\ClearanceJobs\\")
+    finalize_to_json(unique_jobs, directory= f"{parent_dir}\\JobData\\ClearanceJobs\\", filename="jobs_data.json")
     
     print("--------------------------------------------------------")
     print(f"✅ Scraping complete. Data saved to jobs_data.json")

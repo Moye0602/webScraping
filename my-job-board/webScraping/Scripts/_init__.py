@@ -23,7 +23,7 @@ for directory in directories:
         if not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)  
             cprint(f"Created directory: {directory}", color = "green")
-if not os.path.exists("Resumes/"):
+if not os.path.exists("Resumes_Uploads/"):
     os.makedirs("Resumes/", exist_ok=True)  
     cprint(f"Created directory: Resumes/", color = "green")
 
