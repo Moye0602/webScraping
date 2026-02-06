@@ -33,8 +33,10 @@ def get_resumes():
     try:
         # 1. Get the absolute path of the directory server.py is in (Scripts)
         current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        
         # 2. Go UP one level to 'webScraping'
         web_scraping_dir = os.path.dirname(current_script_dir)
+        print(web_scraping_dir)
         # 3. Target the Resume folder
         upload_folder = os.path.join(web_scraping_dir, 'Resume_Uploads')
         
@@ -44,6 +46,7 @@ def get_resumes():
             return jsonify({"error": f"Directory not found: {upload_folder}"}), 404
 
         files = os.listdir(upload_folder)
+        print(f"DEBUG: Found files: {files}")
         resumes = [f for f in files if f.endswith(('.pdf', '.docx', '.txt'))]
         return jsonify({"resumes": resumes})
     except Exception as e:

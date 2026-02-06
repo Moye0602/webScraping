@@ -227,7 +227,7 @@ def chunk_list(data, chunk_size):
     for i in range(0, len(data), chunk_size):
         yield data[i:i + chunk_size]
 
-# def match_roles_batched(resume_text, jobs_json, batch_size=25):
+def match_roles_batched(resume_text, jobs_json, batch_size=25):
     results = []
     
     # 1. Pre-filter by salary to save tokens/money
@@ -251,7 +251,7 @@ def chunk_list(data, chunk_size):
             })
 
         prompt = f"""
-        Resume: {resume_text}
+        # Resume: {resume_text}
         ---
         List of Jobs to Analyze:
         {json.dumps(job_summaries)}
@@ -487,53 +487,42 @@ def create_nested_master_json(data_list, filename=f"llm_data_ClearenceJobs.json"
     return master_dict
 
 def main(selected_resume):
-    import os,json
-    import json
-    # 4. Extract text from the chosen file
-    print(f"✅ Selected: {selected_resume}")
-    resume_text = extract_text_from_docx(f'./Resume_Uploads/{selected_resume}')
-    print(f"Scan Settings:{minSalary} salary, {minScore} score minimum")
-    # minSalaryMod = int(input(f"Enter minimum salary (default is {minSalary}): ") or f"{minSalary}")
-    # minSalary = minSalaryMod
-    # print(f"Using minimum salary: {minSalary}")
     
+    # 1. Setup paths and extract resume
+    print(f"✅ Selected: {selected_resume}")
+    # Using os.path.join for better path cross-compatibility
+    resume_path = os.path.join('.', 'Resume_Uploads', selected_resume)
+    resume_text = extract_text_from_docx(resume_path)
+    
+    print(f"Scan Settings: {minSalary} salary, {minScore} score minimum")
 
-    # resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
-    # print("Resume extracted. Length:", resume_text)
-    with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
+    # 2. Load the scraped jobs
+    # Construct the absolute path to jobs_data.json
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    jobs_data_path = os.path.join(os.path.dirname(script_dir), 'JobData', 'ClearanceJobs', 'jobs_data.json')
+    with open(jobs_data_path, 'r') as f:
         jobs_json = json.load(f)
-    print(f"Loaded {len(jobs_json)} jobs from JSON.")
-    # Process the jobs in batches filled with qualifying jobs (salary >= minSalary) to improve LLM efficiency
-    out_dir = 'JobData/ClearanceJobs/llmIn'
-    os.makedirs(out_dir, exist_ok=True)
-    chunk_size = atsBatchSize  # target number of jobs per LLM batch
-    n = len(jobs_json)
-    idx = 0
-    batch_num = 1
-
-
-    # ... (your previous imports and function defs) ...
-
-    # resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
-    with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
-        jobs_json = json.load(f)
-
+    
     total_jobs = len(jobs_json)
     print(f"Loaded {total_jobs} jobs from JSON.")
 
+    # 3. Initialize Master Analysis and Directory
     out_dir = 'JobData/ClearanceJobs/llmIn'
     os.makedirs(out_dir, exist_ok=True)
-
+    
+    # --- THIS IS YOUR SINGLE SOURCE OF TRUTH ---
+    master_analysis_data = {} 
+    
     chunk_size = atsBatchSize 
     idx = 0
     batch_num = 1
     qualifying_count = 0
 
+    # 4. Start Batch Processing
     while idx < total_jobs:
         batch = []
         batch_start = idx
         
-        # Inner loop to fill the batch
         while idx < total_jobs and len(batch) < chunk_size:
             job = jobs_json[idx]
             salary_val = parse_salary(job.get('salary', {}).get('min_val', 0))
@@ -541,24 +530,18 @@ def main(selected_resume):
             if salary_val >= minSalary:
                 batch.append(job)
                 qualifying_count += 1
-            
             idx += 1
         
         if not batch:
             print("\n[!] No more qualifying jobs found in the remaining data.")
             break
 
-        # --- PROGRESS CALCULATION ---
+        # --- PROGRESS UI ---
         percent_complete = (idx / total_jobs) * 100
-        # Create a simple visual bar [##########----------]
-        bar_length = 20
-        filled = int(round(bar_length * idx / float(total_jobs)))
-        bar = '█' * filled + '-' * (bar_length - filled)
+        bar = '█' * int(round(20 * idx / float(total_jobs))) + '-' * (20 - int(round(20 * idx / float(total_jobs))))
 
         print(f"\n{'='*60}")
         print(f"BATCH {batch_num} | Progress: [{bar}] {percent_complete:.1f}%")
-        print(f"Examining Index: {batch_start} to {idx-1}")
-        print(f"Batch Size: {len(batch)} qualifying roles found so far")
         print(f"Total Qualified: {qualifying_count} / Total Scanned: {idx}")
         print(f"{'='*60}")
 
@@ -566,17 +549,36 @@ def main(selected_resume):
             # Pass the batch to the LLM
             data_list = match_roles_batched(resume_text, batch, batch_size=len(batch))
             
-            out_path = os.path.join(out_dir, f"llm_data_ClearenceJobs_{batch_num}.json")
-            create_nested_master_json(data_list, out_path)
-            cprint(f"Successfully saved {out_path}", color="green")
+            # --- AGGREGATION LOGIC ---
+            # We use our previous function logic but point it to the persistent master_analysis_data
+            # Instead of just saving a file, we update our 'Source of Truth'
+            batch_nested = create_nested_master_json(data_list) 
+            
+            # Merge the batch analysis into the master dictionary
+            for company, roles in batch_nested.items():
+                if company not in master_analysis_data:
+                    master_analysis_data[company] = {}
+                master_analysis_data[company].update(roles)
+
+            # Optional: Save individual batch file for safety/checkpoints
+            batch_path = os.path.join(out_dir, f"llm_data_ClearenceJobs_{batch_num}.json")
+            with open(batch_path, 'w', encoding='utf-8') as f:
+                json.dump(batch_nested, f, indent=4)
+            
+            cprint(f"Successfully processed and merged Batch {batch_num}", color="green")
             
         except Exception as e:
             cprint(f"Error processing batch {batch_num}: {e}", color="red")
-            # Partial save logic here...
 
         batch_num += 1
 
-    print(f"\n✅ Finished. Total scanned: {idx}/{total_jobs}. Total qualified for LLM: {qualifying_count}")
+    # 5. --- SAVE THE SINGLE SOURCE OF TRUTH ---
+    master_file_path = os.path.join(out_dir, "MASTER_ANALYSIS.json")
+    with open(master_file_path, 'w', encoding='utf-8') as f:
+        json.dump(master_analysis_data, f, indent=4)
+
+    print(f"\n✅ Finished. Total scanned: {idx}/{total_jobs}.")
+    cprint(f"🎉 MASTER_ANALYSIS.json saved with {qualifying_count} analyzed roles.", color="cyan", attrs=["bold"])
 
 def resumeFromUI():
     # 1. Initialize the Argument Parser
