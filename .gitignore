@@ -101,3 +101,7 @@ Legacy/
 tests/
 my-job-board/src/MASTER_ANALYSIS.json
 my-job-board/src/MASTER_ANALYSIS.json
+
+# Ignore the server's job tracker file
+my-job-board/webScraping/Scripts/applied_jobs.json
+MASTER_ANALYSIS.json
