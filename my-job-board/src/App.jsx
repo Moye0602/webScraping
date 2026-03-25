@@ -12,7 +12,8 @@ function App() {
   const [sortBy, setSortBy] = useState("score"); // Default sort by score
   const [resumes, setResumes] = useState([]); // resumes stored locally through UI
   const [selectedResume, setSelectedResume] = useState(""); // resume chosen by user
-
+  const [jobStatuses, setJobStatuses] = useState({}); // job application statuses (e.g. applied, interviewing, rejected)
+  // const [updateStatus, setUpdateStatus] = useState(""); // status of job application (e.g. applied, interviewing, rejected)
   // const triggerScrapper = async() => {
   //   setLoading(true);
   //   try{
@@ -30,6 +31,8 @@ function App() {
   //   }
   //   }
   
+
+
   // fetch resumes on load
   const fetchResumes = () => {
     fetch('http://localhost:8000/api/get-resumes')
@@ -186,7 +189,9 @@ function App() {
   const allJobs = Object.values(jobData).flat();
 
   // 2. Filter and then Sort
-  const processedJobs = allJobs
+  let processedJobs;
+  try{  
+  processedJobs = allJobs
     .filter(job => 
       job.role_name.toLowerCase().includes(search.toLowerCase()) ||
       job.company.toLowerCase().includes(search.toLowerCase())
@@ -204,6 +209,77 @@ function App() {
       // }
       return 0;
     });
+  }catch (err){
+    console.error("Error processing job data:", err);
+    processedJobs = [];
+  }
+
+  const updateStatus = async (id, status) => {
+    /**
+   * Updates the status of a job (todo, applied, or none).
+   * Handles toggling: if the new status is the same as the current, it unsets it.
+   * * @param {string} id - The unique hash ID of the job.
+   * @param {string} status - The target status ('todo' or 'applied').
+   */
+    if (!id) {
+      console.error("Update failed: No job ID provided.");
+      return;
+    }
+
+    // 1. Determine if we are adding or toggling off
+    const isTogglingOff = jobStatuses[id] === status;
+    const previousStatus = jobStatuses[id]; // Keep for rollback on error
+
+    // 2. Optimistic UI Update: Change the UI immediately before the network call
+    setJobStatuses(prev => {
+      const newState = { ...prev };
+      if (isTogglingOff) {
+        delete newState[id]; // Remove the status
+      } else {
+        newState[id] = status; // Set/Switch the status
+      }
+      return newState;
+    });
+
+    try {
+      console.log(`📡 Sending status update for ${id}: ${status} (Toggle off: ${isTogglingOff})`);
+      
+      const response = await fetch('http://localhost:8000/api/update-job-status', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ 
+          jobId: id, 
+          status: status 
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("✅ Server updated successfully:", result.status);
+
+    } catch (error) {
+      console.error("❌ Failed to update job status:", error);
+      
+      // 3. Rollback: If the API call fails, revert the UI to its previous state
+      setJobStatuses(prev => {
+        const rolledBackState = { ...prev };
+        if (previousStatus) {
+          rolledBackState[id] = previousStatus;
+        } else {
+          delete rolledBackState[id];
+        }
+        return rolledBackState;
+      });
+      
+      alert("Could not update status. Check if the backend is running.");
+    }
+  };
+
 // UI of page is below this line // UI of page is below this line// UI of page is below this line// UI of page is below this line
   return (
     <div className="dashboard">
@@ -299,6 +375,7 @@ function App() {
 
       <main className="job-list">
         {processedJobs.map((job, index) => (
+          
           <div key={index} className="job-card">
             <div className="card-top">
               <span className="company-tag">{job.company}</span>
@@ -324,6 +401,22 @@ function App() {
                 disabled={isTailoring} // to prevent double click or invocation on same job
                 >
                   {isTailoring ? "✨ Tailoring..." : "✨ Tailor Resume"}
+                </button>
+                
+                
+                <button               
+                  onClick={() => updateStatus(job.id, "applied")}
+                  className="tailor-btn"
+                >
+                  {jobStatuses[job.id] === "applied" ? "✅ Applied" : "Mark Applied"}
+                </button>
+
+                <button              
+                onClick={() => updateStatus(job.id, "todo")}
+                className="tailor-btn"
+                disabled={isTailoring} // to prevent double click or invocation on same job
+                >
+                  {jobStatuses[job.id] === "todo" ? " ✅Review" : "Save for later"}
                 </button>
 
 

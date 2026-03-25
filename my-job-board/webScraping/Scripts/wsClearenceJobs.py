@@ -9,6 +9,7 @@ from datetime import datetime
 from  _init__ import *
 from common.helper import cprint 
 import argparse, sys
+from profileSettings import *
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 
@@ -124,6 +125,18 @@ def extract_salary(text):
 
     return {"min": 0, "max": 0}
 
+def load_existing_cache(file_path='JobData/ClearanceJobs/jobs_data.json'):
+    """Loads existing jobs into a dict keyed by job_id for O(1) lookup."""
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as f:
+            try:
+                data = json.load(f)
+                # Create a map: { "hash_id": {full_job_dict} }
+                return {job['job_id']: job for job in data}
+            except json.JSONDecodeError:
+                return {}
+    return {}
+
 def process_scraped_data(job_cards, seen_links: set = None):
     """Process a list of job cards and return deduplicated extracted data.
 
@@ -134,22 +147,31 @@ def process_scraped_data(job_cards, seen_links: set = None):
     if seen_links is None:
         seen_links = set()
 
+    cache = load_existing_cache()
+    cprint(f"Loaded {len(cache)} jobs from cache to skip deep scraping.", color='yellow')
+    
     for idx, card in enumerate(job_cards, start=1):
         try:
-            # 1. Role and Link (Drilling into the 'Header' and 'Job Name Wrapper')
+            # 1. Basic Info Extraction (Fast)
             role_node = card.select_one('.job-search-list-item-desktop__job-name')
-            if not role_node:
-                # skip malformed card
-                cprint(f"Skipping malformed card at index {idx}", color = 'red')
-                continue
+            if not role_node: continue
+            
             role_name = role_node.get_text(strip=True)
-            # Prepend base URL for the link
             role_href = role_node.get('href')
-            if not role_href:
-                cprint(f"Skipping card with missing href for role '{role_name}'", color = 'red')
-                continue
             role_link = "https://www.clearancejobs.com" + role_href
+            
+            company_node = card.select_one('.job-search-list-item-desktop__company-name a')
+            company = company_node.get_text(strip=True) if company_node else "Unknown"
 
+            # 2. HASH CHECK (The Speed Trick)
+            job_id = generate_job_id(role_name, company)
+            
+            if job_id in cache:
+                cprint(f"{idx} | Cache Hit: {role_name} (Skipping Deep Scrape)", color='green')
+                # Pull the full data from cache and append it
+                extracted_data.append(cache[job_id])
+                seen_links.add(role_link)
+                continue # Skip the rest of the loop for this card
             # Deduplicate on link
             if role_link in seen_links:
                 print(f"Skipping duplicate job link: {role_link}")
@@ -192,6 +214,7 @@ def process_scraped_data(job_cards, seen_links: set = None):
             # Build the JSON object and record link as seen
             extracted_data.append({
                 "job_id":generate_job_id(role_name,company),
+                "date_sourced": time.strftime("%Y-%m-%d"),
                 "role_name": role_name,
                 "company": company,
                 "link": role_link,
@@ -221,7 +244,16 @@ def process_scraped_data(job_cards, seen_links: set = None):
 
     return extracted_data, seen_links
     
-def finalize_to_json(data_list, directory= "JobData/ClearanceJobs", filename="jobs_data.json"):
+def finalize_to_json(data_list, directory=None, filename="jobs_data.json"):
+    """Write cleaned job list to `directory/filename`.
+
+    If `directory` is None, prefer the absolute WS root from `profileSettings` and fall back
+    to the relative `ws_root_directory`.
+    """
+    # Resolve directory preference from profileSettings
+    if directory is None:
+        directory = resolve_path(ws_root_directory, WS_ROOT_ABS)
+
     os.makedirs(directory, exist_ok=True)
     cleaned_data = []
     
@@ -236,6 +268,7 @@ def finalize_to_json(data_list, directory= "JobData/ClearanceJobs", filename="jo
         date_val = "Posted today" if "today" in raw_clearance else entry.get('date_posted')
         clean_entry = {
             "job_id":generate_job_id(entry['role_name'],entry['company']),
+            "date_sourced": time.strftime("%Y-%m-%d"),
             "role_name": entry['role_name'],
             "company": entry['company'],
             "link": entry['link'],
@@ -254,10 +287,15 @@ def finalize_to_json(data_list, directory= "JobData/ClearanceJobs", filename="jo
         cleaned_data.append(clean_entry)
 
     # Convert List to JSON and write to file
-    with open(f'{directory}{filename}', 'w', encoding='utf-8') as f:
-        json.dump(cleaned_data, f, indent=4)
-    
-    return json.dumps(cleaned_data, indent=4) # Returns as a JSON string
+    out_path = os.path.join(directory, filename)
+    try:
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(cleaned_data, f, indent=4)
+        cprint(f'saved: {out_path}')
+    except Exception as e:
+        cprint(f'Error saving {out_path}: {e}', color='red')
+
+    return json.dumps(cleaned_data, indent=4)  # Returns as a JSON string
 
 def scrape_page_worker(page_num, base_url):
     """
@@ -320,7 +358,7 @@ if __name__ == "__main__":
         baseURL = input("Enter ClearanceJobs URL (or press Enter for default): ").strip()
         if not baseURL:
             input("No URL provided. Using default ClearanceJobs URL. Press Enter to continue...")
-            baseURL = "https://www.clearancejobs.com/jobs?loc=5,9,48&received=93&ind=nq,nr,pg,nu,nv,nz&type=e&limit=50"
+            baseURL = "https://www.clearancejobs.com/jobs?loc=5,53,9&received=93&ind=nq,nr,ns,pg,nt,nu,nv&type=e,c&limit=50"
     
     total_pages = get_total_pages(baseURL)
     all_raw_jobs = []
@@ -352,8 +390,10 @@ if __name__ == "__main__":
             seen_links.add(link)
 
     # Finalize to JSON
-    print(f"{parent_dir}\\JobData\\ClearanceJobs\\")
-    finalize_to_json(unique_jobs, directory= f"{parent_dir}\\JobData\\ClearanceJobs\\", filename="jobs_data.json")
+    # Persist results to the workspace path indicated in profileSettings
+    target_dir = resolve_path(ws_root_directory, WS_ROOT_ABS)
+    print(f"Saving jobs to: {os.path.join(target_dir, 'jobs_data.json')}")
+    finalize_to_json(unique_jobs, directory=target_dir, filename="jobs_data.json")
     
     print("--------------------------------------------------------")
     print(f"✅ Scraping complete. Data saved to jobs_data.json")

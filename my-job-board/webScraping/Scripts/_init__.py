@@ -6,26 +6,26 @@ if parent_dir not in sys.path:
 from common.helper import cprint
 import hashlib
 
-ClearanceJobsdirectory = ""
-subdirectories = [ "llmOut", "llmIn"]
+# ClearanceJobsdirectory = ""
+# subdirectories = [ "llmOut", "llmIn"]
     
-directories = [
-    "JobData/ClearanceJobs",
-    "JobData/LinkedinJobs",
-    "JobData/DiceJobs",
-    "JobData/BuiltInJobs",]
-for directory in directories:
-    baseDirectory = directory
-    if not os.path.exists(directory):
-        os.makedirs(directory, exist_ok=True)
-    for subdirectory in subdirectories:
-        directory = os.path.join(baseDirectory, subdirectory)
-        if not os.path.exists(directory):
-            os.makedirs(directory, exist_ok=True)  
-            cprint(f"Created directory: {directory}", color = "green")
-if not os.path.exists("Resumes_Uploads/"):
-    os.makedirs("Resumes/", exist_ok=True)  
-    cprint(f"Created directory: Resumes/", color = "green")
+# directories = [
+#     "JobData/ClearanceJobs",
+#     "JobData/LinkedinJobs",
+#     "JobData/DiceJobs",
+#     "JobData/BuiltInJobs",]
+# for directory in directories:
+#     baseDirectory = directory
+#     if not os.path.exists(directory):
+#         os.makedirs(directory, exist_ok=True)
+#     for subdirectory in subdirectories:
+#         directory = os.path.join(baseDirectory, subdirectory)
+#         if not os.path.exists(directory):
+#             os.makedirs(directory, exist_ok=True)  
+#             cprint(f"Created directory: {directory}", color = "green")
+# if not os.path.exists("Resumes_Uploads/"):
+#     os.makedirs("Resumes_Uploads/", exist_ok=True)  
+#     cprint(f"Created directory: Resumes_Uploads/", color = "green")
 
 def generate_job_id(role_name, company):
     """Creates a deterministic unique ID for a job based on title and company."""

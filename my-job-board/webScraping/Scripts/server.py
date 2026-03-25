@@ -13,7 +13,8 @@ from docx import Document
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # If your resumes are in a folder called 'Resume_Uploads' in the root
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'Resume_Uploads')
-APPLIED_TRACKER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'applied_jobs.json')
+JOB_TRACKER_PATH = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), 'src', 'applied_jobs.json')
+
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -36,6 +37,7 @@ def get_resumes():
         
         # 2. Go UP one level to 'webScraping'
         web_scraping_dir = os.path.dirname(current_script_dir)
+        print(web_scraping_dir)
         # 3. Target the Resume folder
         upload_folder = os.path.join(web_scraping_dir, 'Resume_Uploads')
         
@@ -85,16 +87,23 @@ def run_ats():
     resume_path = os.path.join(UPLOAD_FOLDER, resume_filename)
 
     try:
+        # run atsClearenceJobs.py with the resume path and model choice as arguments
         script_path = os.path.join(BASE_DIR, "atsClearenceJobs.py")
-        
         subprocess.run([
             sys.executable,
             script_path,
             "--resume_path", resume_path,
             "--model", model_choice
         ], check=True)
-        
+
+        # After ATS analysis, run the sorting script to organize results
+        script_path = os.path.join(BASE_DIR, "sort_llm_Master.py")
+        subprocess.run([
+            sys.executable,
+            script_path
+        ], check=True)
         return jsonify({"status": "success", "message": f"ATS Analysis complete for {resume_filename}"})
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -124,10 +133,10 @@ def mark_applied():
     """Endpoint for React to signal that a job has been applied to."""
     def get_applied_ids():
         """Reads the list of applied job IDs from the JSON tracker."""
-        if not os.path.exists(APPLIED_TRACKER_PATH):
+        if not os.path.exists(JOB_TRACKER_PATH):
             return []
         try:
-            with open(APPLIED_TRACKER_PATH, 'r') as f:
+            with open(JOB_TRACKER_PATH, 'r') as f:
                 return json.load(f)
         except Exception:
             return []
@@ -140,10 +149,94 @@ def mark_applied():
     applied_ids = get_applied_ids()
     if job_id not in applied_ids:
         applied_ids.append(job_id)
-        with open(APPLIED_TRACKER_PATH, 'w') as f:
+        with open(JOB_TRACKER_PATH, 'w') as f:
             json.dump(applied_ids, f, indent=4)
     
     return jsonify({"status": "success", "applied": applied_ids})
+
+@app.route('/api/update-job-status', methods=['POST'])
+def update_job_status():
+    data = request.json
+    # Ensure we handle both 'id' and 'jobId' just in case
+    job_id = data.get('jobId') or data.get('id')
+    new_status = data.get('status')
+
+    if not job_id or not new_status:
+        return jsonify({"error": "Missing jobId or status"}), 400
+
+    tracker = {"todo": [], "applied": []}
+
+    # FIX: Create directory, not the file itself, using makedirs
+    tracker_dir = os.path.dirname(JOB_TRACKER_PATH)
+    if tracker_dir and not os.path.exists(tracker_dir):
+        os.makedirs(tracker_dir, exist_ok=True)
+
+    if os.path.exists(JOB_TRACKER_PATH):
+        try:
+            with open(JOB_TRACKER_PATH, 'r') as f:
+                loaded_data = json.load(f)
+                if isinstance(loaded_data, dict):
+                    # Ensure we don't overwrite with empty lists if keys are missing
+                    tracker["todo"] = loaded_data.get("todo", [])
+                    tracker["applied"] = loaded_data.get("applied", [])
+        except (json.JSONDecodeError, Exception):
+            pass 
+
+    # 1. Check if the job is already in the target category before we clear it
+    # This determines if we are 'adding' or 'toggling off'
+    is_already_in_target = False
+    if new_status in tracker and job_id in tracker[new_status]:
+        is_already_in_target = True
+
+    # 2. Remove job_id from ALL categories (Cleanup)
+    # We do this every time to ensure a job isn't in 'todo' and 'applied' simultaneously
+    for category in tracker:
+        if job_id in tracker[category]:
+            tracker[category].remove(job_id)
+
+    # 3. Logic: If it wasn't already in the target, add it.
+    # If it WAS already there, we leave it removed (The Toggle effect)
+    if not is_already_in_target and new_status in tracker:
+        tracker[new_status].append(job_id)
+        # current_action = f"Added to {new_status}"
+    # else:
+        # current_action = f"Removed from {new_status}"
+
+    # 4. Save
+    try:
+        with open(JOB_TRACKER_PATH, 'w') as f:
+            json.dump(tracker, f, indent=4)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"status": "success", "current_tracker": tracker})
+
+# @app.route('/api/mark-applied', methods=['POST'])
+# def mark_applied():
+#     """Endpoint for React to signal that a job has been applied to."""
+#     def get_applied_ids():
+#         """Reads the list of applied job IDs from the JSON tracker."""
+#         if not os.path.exists(JOB_TRACKER_PATH):
+#             return []
+#         try:
+#             with open(JOB_TRACKER_PATH, 'r') as f:
+#                 data = json.load(f)
+#                 return data.get("applied", {})
+#         except Exception:
+#             return []
+#     data = request.json
+#     job_id = data.get('jobId')
+    
+#     if not job_id:
+#         return jsonify({"error": "No jobId provided"}), 400
+
+#     applied_ids = get_applied_ids()
+#     if job_id not in applied_ids:
+#         applied_ids.append(job_id)
+#         with open(JOB_TRACKER_PATH, 'w') as f:
+#             json.dump(applied_ids, f, indent=4)
+    
+#     return jsonify({"status": "success", "applied": applied_ids})
 
 @app.route('/api/tailor-resume', methods=['POST'])
 def handle_tailoring():
