@@ -12,7 +12,7 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 from common.helper import cprint
-
+from datetime import date
 # from openai import AzureOpenAI
 # client = AzureOpenAI(
 #     api_key=os.getenv("AZURE_OPENAI_KEY"),
@@ -311,6 +311,7 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
         for j in batch:
             job_summaries.append({
                 "id": j.get('link'), # Use link or UUID as a key
+                "date_posted": str(date.today()),
                 "title": j.get('role_name'),
                 "description": j.get('full_description'),
                 "exp": j.get('years_exp_required'),
@@ -348,6 +349,7 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
             [
                 {{
                 "id": "original_id_here",
+                "date": Current date in YYYY-MM-DD format,
                 "score": <integer between 0-100>,
                 "fit_reason": "One concise sentence explaining the match based on the rules above.",
                 "missing_skills": ["List only skills/certs explicitly missing from the resume"],
