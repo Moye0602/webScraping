@@ -5,13 +5,22 @@ import google.generativeai as genai
 # from playwright.sync_api import sync_playwright
 # from tqdm import tqdm
 from docx import Document
-from profileSettings import minSalary, minScore, atsBatchSize,llmModel
+from profileSettings import *
 import argparse, sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 from common.helper import cprint
+
+# from openai import AzureOpenAI
+# client = AzureOpenAI(
+#     api_key=os.getenv("AZURE_OPENAI_KEY"),
+#     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+#     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+# )
+
+
 
 
 def jitter():
@@ -124,7 +133,58 @@ def parse_salary(s):
     except Exception:
         return 0
 
-def call_model_with_retries(prompt, max_retries=2, initial_backoff=1.0):
+import time
+import re
+from openai import AzureOpenAI
+
+# Initialize Azure OpenAI client
+client = AzureOpenAI(
+    api_key="YOUR_AZURE_OPENAI_KEY",
+    api_version="2024-02-01",
+    azure_endpoint="https://YOUR-RESOURCE-NAME.openai.azure.com"
+)
+
+def call_Azure_with_retries(prompt, max_retries=2, initial_backoff=1.0):
+    """
+    Azure OpenAI equivalent of the Gemini retry wrapper.
+    Handles 429 rate limits, parses retry-after hints, and falls back to exponential backoff.
+    """
+    backoff = initial_backoff
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",   # or your deployed model name
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response
+
+        except Exception as e:
+            text = str(e)
+
+            # Azure sometimes returns: "Please retry after 20 seconds"
+            m = re.search(r"retry after\s*(\d+)", text, re.IGNORECASE)
+
+            # Or: "Retry-After: 15"
+            if not m:
+                m = re.search(r"Retry-After:\s*(\d+)", text, re.IGNORECASE)
+
+            if m:
+                delay = float(m.group(1)) + 1.0
+                print(f"Rate limit hit. Waiting {delay:.1f}s before retry (attempt {attempt}/{max_retries})")
+                time.sleep(delay)
+                continue
+
+            # Fallback exponential backoff
+            if attempt == max_retries:
+                print(f"Max retries reached ({max_retries}). Raising error.")
+                raise
+
+            print(f"Transient error calling Azure OpenAI: {e}. Backing off {backoff:.1f}s (attempt {attempt}/{max_retries})")
+            time.sleep(backoff)
+            backoff *= 2
+
+def call_Gemini_with_retries(prompt, max_retries=2, initial_backoff=1.0):
     """Call the LLM and handle rate-limit (429) errors with retry delays.
 
     The function will inspect exception messages for a suggested retry delay
@@ -208,16 +268,21 @@ def match_roles(resume_text, jobs_json):
                 """
             
             try:
-                response = call_model_with_retries(prompt)
+                response = call_Gemini_with_retries(prompt)
+                # Ensure we received a response object with text
+                if not response or not hasattr(response, 'text') or response.text is None:
+                    print(f"⚠️ Warning: No response from LLM for job '{job.get('role_name')}'. Skipping.")
+                    continue
+
                 # Clean and parse the LLM's JSON response
                 match_data = json.loads(response.text.replace('```json', '').replace('```', ''))
-                
+
                 # Combine original job data with LLM analysis
                 job.update(match_data)
                 results.append(job)
-                
+
                 # Rate limiting for free tier
-                time.sleep(1) 
+                time.sleep(1)
             except Exception as e:
                 print(f"Error processing {job['role_name']}: {e}")
     except KeyboardInterrupt:
@@ -266,15 +331,27 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
             - 'Top Secret' matches and exceeds 'Secret'.
             - If the resume states an active clearance that meets or exceeds the job requirement, it is a 100% match for that criteria.
             3. SCORING: Weight the score heavily on Technical Skills, Years of Experience, and Clearance.
+            
+            Before scoring, classify each job into one primary domain category:
+            ["Cybersecurity", "Systems Engineering", "Software Development", 
+            "Program/Project Management", "Intelligence", "Logistics", 
+            "Administrative", "Writing/Documentation", "Other"].
+
+            Also classify the resume into its top 1-2 domain categories.
+
+            Apply a domain alignment adjustment:
+            - If job domain matches resume domain → no penalty.
+            - If job domain is adjacent → subtract 5 points.
+            - If job domain is unrelated → subtract 20 points.
 
         Output Format:
             [
                 {{
                 "id": "original_id_here",
-                "score": (0-100),
+                "score": <integer between 0-100>,
                 "fit_reason": "One concise sentence explaining the match based on the rules above.",
-                "missing_skills": ["List only skills/certs explicitly missing from the resume"]
-                "matching_skills":["List only skills/certs explicitly present from the resume"]
+                "missing_skills": ["List only skills/certs explicitly missing from the resume"],
+                "matching_skills": ["List only skills/certs explicitly present from the resume"]
                 }}
             ]
         """
@@ -286,7 +363,7 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
         # [
         #   {{
         #     "id": "original_id_here",
-        #     "score": (0-100),
+        #     "score": <integer between 0-100>,
         #     "fit_reason": "one sentence explanation",
         #     "missing_skills": ["skill1", "skill2"]
         #   }}
@@ -294,10 +371,24 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
 
         try:
             print(f"Processing a batch of {len(batch)} jobs...")
-            response = call_model_with_retries(prompt)
-            
+            response = call_Gemini_with_retries(prompt)
+
+            # Ensure response is valid
+            if not response or not hasattr(response, 'text') or response.text is None:
+                print("⚠️ Warning: No response from LLM for batch, skipping this batch.")
+                continue
+
             # Use regex or json.loads to clean the response
             raw_text = response.text.replace('```json', '').replace('```', '').strip()
+
+            # Extract JSON portion if there is surrounding text
+            json_match = re.search(r'\[[\s\S]*\]|\{[\s\S]*\}', raw_text)
+            if json_match:
+                raw_text = json_match.group()
+            else:
+                print(f"⚠️ Warning: No JSON found in LLM response (preview): {raw_text[:200]}")
+                continue
+
             batch_results = json.loads(raw_text)
 
             # Map results back to original data
@@ -370,10 +461,10 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
             [
                 {{
                 "id": "original_id_here",
-                "score": (0-100),
+                "score": <integer between 0-100>,
                 "fit_reason": "One concise sentence explaining the match based on the rules above.",
-                "missing_skills": ["List only skills/certs explicitly missing from the resume"]
-                "matching_skills":["List only skills/certs explicitly present from the resume"]
+                "missing_skills": ["List only skills/certs explicitly missing from the resume"],
+                "matching_skills": ["List only skills/certs explicitly present from the resume"]
                 }}
             ]
         """
@@ -393,12 +484,35 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
 
         try:
             print(f"Processing a batch of {len(batch)} jobs...")
-            response = call_model_with_retries(prompt)
-            # print(f"Raw LLM response: {response.text[:200]}...")  # Print the start of the response for debugging
+            response = call_Gemini_with_retries(prompt)
+
+            # Ensure response is valid
+            if not response or not hasattr(response, 'text') or response.text is None:
+                print("⚠️ Warning: No response from LLM for batch, skipping this batch.")
+                continue
+
             # Use regex or json.loads to clean the response
             raw_text = response.text.replace('```json', '').replace('```', '').strip()
-            # print(f"Raw LLM response: {raw_text[:200]}...")  # Print the start of the response for debugging
-            batch_results = json.loads(raw_text)
+            
+            # Extract just the JSON portion (handles extra text before/after)
+            json_match = re.search(r'\[[\s\S]*\]|\{[\s\S]*\}', raw_text)
+            if json_match:
+                raw_text = json_match.group()
+            else:
+                # If no valid JSON structure found, log and skip this batch
+                print(f"⚠️ Warning: No valid JSON found in response. Raw response: {raw_text[:200]}")
+                continue
+            
+            if not raw_text.strip():
+                print(f"⚠️ Warning: Empty JSON response, skipping batch")
+                continue
+            
+            try:
+                batch_results = json.loads(raw_text)
+            except json.JSONDecodeError as e:
+                print(f"⚠️ Warning: Failed to parse JSON: {e}")
+                print(f"Raw text: {raw_text[:300]}")
+                continue
 
             # Map results back to original data
             for match_item in batch_results:
@@ -408,8 +522,9 @@ def match_roles_batched(resume_text, jobs_json, batch_size=25):
                     results.append(original_job)
 
                     # --- THE TAILORING TRIGGER ---
-                    if original_job['score'] >= minScore:
-                        print(f"🔥 High Match Found ({original_job['score']}%). Triggering Tailor script...")
+                    score = original_job.get('score', 0)
+                    if isinstance(score, (int, float)) and score >= minScore:
+                        print(f"🔥 High Match Found ({score}%). Triggering Tailor script...")
                         # Here you would call your tailoring function
                         # generate_tailored_resume(resume_text, original_job
 
@@ -436,6 +551,7 @@ def extract_text_from_docx(file_path):
         full_text = []
         for para in doc.paragraphs:
             full_text.append(para.text)
+            
         return "\n".join(full_text)
     except Exception as e:
         print(f"Error reading Word doc: {e}")
@@ -472,6 +588,7 @@ def create_nested_master_json(data_list, filename=f"llm_data_ClearenceJobs.json"
 
         # Nest the role details under the role_name key within that company
         master_dict[company][role] = {
+            "date_sourced": time.strftime("%Y-%m-%d"),
             "score": item.get('score'),
             "fit_reason": item.get('fit_reason'),
             "missing_skills": item.get('missing_skills'),
@@ -503,6 +620,7 @@ def update_grand_master(grand_master, batch_data):
 
         # Map the item to the specific nested structure
         grand_master[company][role] = {
+            "date_sourced": time.strftime("%Y-%m-%d"),
             "score": item.get('score'),
             "fit_reason": item.get('fit_reason'),
             "missing_skills": item.get('missing_skills', []),
@@ -522,65 +640,92 @@ def main(selected_resume):
     import json
     # 4. Extract text from the chosen file
     print(f"✅ Selected: {selected_resume}")
-    resume_text = extract_text_from_docx(f'{selected_resume}')
-    print(f"Scan Settings:{minSalary} salary, {minScore} score minimum")
-    # minSalaryMod = int(input(f"Enter minimum salary (default is {minSalary}): ") or f"{minSalary}")
-    # minSalary = minSalaryMod
-    # print(f"Using minimum salary: {minSalary}")
-    
 
-    # resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
-    # print("Resume extracted. Length:", resume_text)
-    # with open('C:\\Users\\kmoye\\3D Objects\\Dev_Mode\\webScraping\\JobData\\ClearanceJobs\\jobs_data.json', 'r') as f:
-    with open("C:\\Users\\moyek\\Documents\\DevMode\\WebScraping\\JobData\\ClearanceJobs\\jobs_data.json", 'r') as f:
-        
-        
-        jobs_json = json.load(f)
-    print(f"Loaded {len(jobs_json)} jobs from JSON.")
-    # Process the jobs in batches filled with qualifying jobs (salary >= minSalary) to improve LLM efficiency
-    out_dir = 'JobData/ClearanceJobs/llmIn'
+    # Resolve resume path to the deployment's Resume_Uploads directory when necessary.
+    candidates = []
+    # If user provided an absolute path, try it first
+    if os.path.isabs(selected_resume):
+        candidates.append(selected_resume)
+    else:
+        # If given just a filename, try relative to working dir, script dir, and webScraping/Resume_Uploads
+        candidates.append(os.path.join(os.getcwd(), selected_resume))
+        candidates.append(os.path.join(current_dir, selected_resume))
+        candidates.append(os.path.join(current_dir, 'Resume_Uploads', selected_resume))
+        candidates.append(os.path.join(parent_dir, 'Resume_Uploads', selected_resume))
+
+    # Also handle cases where selected_resume accidentally contains 'Scripts\\Resume_Uploads' path
+    if 'Scripts' + os.sep + 'Resume_Uploads' in str(selected_resume):
+        bn = os.path.basename(selected_resume)
+        candidates.insert(0, os.path.join(parent_dir, 'Resume_Uploads', bn))
+
+    resume_path = None
+    for p in candidates:
+        try:
+            if p and os.path.exists(p):
+                resume_path = p
+                break
+        except Exception:
+            continue
+
+    if resume_path is None:
+        # Fallback: pass selected_resume through (existing behavior)
+        resume_path = selected_resume
+
+    print(f"DEBUG: Using resume path: {resume_path}")
+    resume_text = extract_text_from_docx(resume_path)
+    print(f"Scan Settings: {minSalary} salary, {minScore} score minimum")
+
+    # Resolve paths
+    jobs_data_path = resolve_path(webscraped_jobs_path, webscraped_jobs_path_ABS)
+    out_dir = resolve_path('JobData/DiceJobs', ws_data_path_In_ABS)
     os.makedirs(out_dir, exist_ok=True)
-    chunk_size = atsBatchSize  # target number of jobs per LLM batch
-    n = len(jobs_json)
-    idx = 0
-    batch_num = 1
+    master_file_path = os.path.join(out_dir, "ATS_MASTER_ANALYSIS.json")
 
-
-    # ... (your previous imports and function defs) ...
-
-    # resume_text = extract_text_from_docx("kristopher-moye-resume 2026_01_16.docx")
-    # with open('JobData/ClearanceJobs/jobs_data.json', 'r') as f:
-    #     jobs_json = json.load(f)
-
-    total_jobs = len(jobs_json)
-    print(f"Loaded {total_jobs} jobs from JSON.")
-
-    out_dir = 'JobData/ClearanceJobs/llmIn'
-    os.makedirs(out_dir, exist_ok=True)
+    # --- LAYER 1: LOAD EXISTING PROGRESS ---
     grand_master_dict = {}
-    chunk_size = atsBatchSize 
-    idx = 0
-    batch_num = 1
-    qualifying_count = 0
+    if os.path.exists(master_file_path):
+        with open(master_file_path, 'r', encoding='utf-8') as f:
+            try:
+                grand_master_dict = json.load(f)
+                cprint(f"🔄 Resuming session: {len(grand_master_dict)} companies already analyzed.", color="yellow")
+            except json.JSONDecodeError:
+                grand_master_dict = {}
+
+    with open(jobs_data_path, 'r') as f:
+        jobs_json = json.load(f)
+    
+    total_jobs = len(jobs_json)
+    idx, batch_num, qualifying_count = 0, 1, 0
+
     while idx < total_jobs:
         batch = []
         batch_start = idx
         
-        # Inner loop to fill the batch
-        while idx < total_jobs and len(batch) < chunk_size:
+        while idx < total_jobs and len(batch) < atsBatchSize:
             job = jobs_json[idx]
+            role_name = job.get('role_name')
+            company = job.get('company')
             salary_val = parse_salary(job.get('salary', {}).get('min_val', 0))
             
-            if salary_val >= minSalary:
+            # --- LAYER 2: SKIP ANALYZED JOBS ---
+            # Check if this specific role at this company is already in our ATS_MASTER_ANALYSIS
+            if company in grand_master_dict and role_name in grand_master_dict[company]:
+                # Log occasionally so the console isn't flooded
+                if idx % 10 == 0:
+                    print(f"⏭️ Skipping {role_name} (Already analyzed)")
+            elif salary_val >= minSalary:
                 batch.append(job)
                 qualifying_count += 1
             
             idx += 1
         
         if not batch:
-            print("\n[!] No more qualifying jobs found in the remaining data.")
-            break
+            if idx >= total_jobs: break
+            continue # Keep looking for new qualifying jobs
 
+        # # --- PROGRESS UI ---
+        # percent_complete = (idx / total_jobs) * 100
+        # print(f"\nBATCH {batch_num} | Processing {len(batch)} NEW roles | Progress: {percent_complete:.1f}%")
         # --- PROGRESS CALCULATION ---
         percent_complete = (idx / total_jobs) * 100
         # Create a simple visual bar [##########----------]
@@ -596,25 +741,30 @@ def main(selected_resume):
         print(f"{'='*60}")
 
         try:
-            # Pass the batch to the LLM
+            # Call LLM
             data_list = match_roles_batched(resume_text, batch, batch_size=len(batch))
+            
+            # Update internal dict
             grand_master_dict = update_grand_master(grand_master_dict, data_list)
 
-            out_path = os.path.join(out_dir, f"llm_data_ClearenceJobs_{batch_num}.json")
-            create_nested_master_json(data_list, out_path)
-            cprint(f"Successfully saved {out_path}", color="green")
+            # --- LAYER 3: IMMEDIATE SAVE (Write-Through) ---
+            # Even if the next batch crashes, this one is safe on disk
+            with open(master_file_path, 'w', encoding='utf-8') as f:
+                json.dump(grand_master_dict, f, indent=4)
             
-        except ConnectionError as e:
-            cprint(f"Error processing batch {batch_num}: {e}", color="red")
+            cprint(f"✅ Progress checkpoint saved to ATS_MASTER_ANALYSIS.json", color="green")
+            
+        except Exception as e:
+            cprint(f"❌ Rate limit or Error on batch {batch_num}: {e}", color="red")
+            # Break the loop but the final save is already done
             break
-            # Partial save logic here...
 
-        batch_num += 1
-    print(out_dir)
-    final_output_path = os.path.join(out_dir, "MASTER_ANALYSIS.json")
-    with open(final_output_path, 'w', encoding='utf-8') as f:
-        json.dump(grand_master_dict, f, indent=4)
-    print(f"\n✅ Finished. Total scanned: {idx}/{total_jobs}. Total qualified for LLM: {qualifying_count}")
+        # batch_num += 1
+        # out_path = os.path.join(f'{out_dir}\\llmIn', f"llm_data_ClearenceJobs_{batch_num}.json")
+        # # create_nested_master_json(data_list, out_path)
+        # cprint(f"Successfully saved {out_path}", color="green")
+
+    print(f"\n✅ Session Ended. Total analyzed: {len(grand_master_dict)} roles.")
 
 def resumeFromUI():
     # 1. Initialize the Argument Parser
@@ -641,10 +791,11 @@ main(resumeFromUI())
 
 #     import os
 #     # 1. Get list of docx files
-#     docx_files = [f for f in os.listdir('./Resume_Uploads') if f.endswith('.docx')]
+#     my_job_uploads_dir = os.path.join(os.path.dirname(__file__), "Resume_Uploads")
+#     docx_files = [f for f in os.listdir(my_job_uploads_dir) if f.endswith('.docx')]
 
 #     if not docx_files:
-#         print("❌ No .docx files found in the current directory.")
+#         print("❌ No .docx files found in the Resume_Uploads directory.")
 #         exit()
 
 #     # 2. Display the list to the user
